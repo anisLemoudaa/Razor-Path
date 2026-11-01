@@ -1,0 +1,20 @@
+{
+  "choice": "platformer",
+  "prompt": "Use case: stylized-concept. Asset type: opaque game loading background, exactly 1536x1024 landscape. Create ONE text-free game key-art image for Calico Yarn Quest, a cozy felt-cat side-scrolling platformer. Input image is a CHARACTER IDENTITY REFERENCE only; create an original scene, not a sprite collage. Preserve the small realistic felt calico kitten with cream-white body, orange and charcoal patches and striped tail. Show the kitten playfully leaping toward a red yarn ball between rounded felt-covered ledges in a warm sunlit indoor nook. A small fish-shaped collectible and a friendly toy robot hazard subtly communicate actual gameplay. Tactile wool-felt surfaces, soft handcrafted trees and cushionlike platforms, gentle afternoon light, warm cream and muted green color harmony. Composition: main kitten and leap action in the upper-right half, layered ledges at the outside edges; central lower third remains softly shaded, uncluttered felt floor negative space for separate live loading text and progress. Charming premium game illustration with coherent perspective and material detail. Full-bleed opaque background. Absolutely no text, letters, numbers, logos, UI, loading bars, engine branding, watermark, borders, contact sheets or panels.",
+  "tool": "builtin image_gen",
+  "model": "unknown (not exposed by built-in tool)",
+  "reference": {
+    "starter": "game-platformer-v55",
+    "asset": "assets/template/cat/idle.webp",
+    "role": "character identity reference"
+  },
+  "generatedMasterSha256": "27efd594f411f045167d6002a0af6effcace3227d10262f3a7a15dd6bcf5a229",
+  "asset": "assets/template/ui/loading-background.png",
+  "assetSha256": "3b4b158f93a3e6fc6f866f1b121f106b8e178b2a68a44a2c1dba46cc4c76947e",
+  "embeddedWebpSha256": "8a1dcca7835847d6a58ec0ba8a49cef62238708317a66e95618979ae6763a5bb",
+  "processing": "Aspect-preserving downscale to 1280px width; 256-color PNG boot image and quality-82 WebP embedded before PCK; no text baked into either image.",
+  "bytes": {
+    "png": 540732,
+    "webp": 117518
+  }
+}

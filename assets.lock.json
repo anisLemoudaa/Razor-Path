@@ -1,0 +1,348 @@
+{
+  "version": 2,
+  "groups": {
+    "template": {
+      "name": "Template",
+      "order": 0
+    }
+  },
+  "bundles": {},
+  "assets": {
+    "assets/template/audio/bgm.ogg": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/734f709706ddfb9870a4acbc937d786e0a5a43eaadbd4b6aa5e4e18b124c61db/assets/template/audio/bgm.ogg",
+      "sha256": "sha256:734f709706ddfb9870a4acbc937d786e0a5a43eaadbd4b6aa5e4e18b124c61db",
+      "size": 820738,
+      "assetType": "audio",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/audio/checkpoint.ogg": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/adc281ab8245e373f90296f6f81e1ac8d0eef4f05b8a23416d31907a64438f45/assets/template/audio/checkpoint.ogg",
+      "sha256": "sha256:adc281ab8245e373f90296f6f81e1ac8d0eef4f05b8a23416d31907a64438f45",
+      "size": 11260,
+      "assetType": "audio",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/audio/coin.ogg": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/4b7bf5ca36676a5ace18abcbe3b093c80573e6d91f27eff3d8dc1f4b3e275caa/assets/template/audio/coin.ogg",
+      "sha256": "sha256:4b7bf5ca36676a5ace18abcbe3b093c80573e6d91f27eff3d8dc1f4b3e275caa",
+      "size": 8251,
+      "assetType": "audio",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/audio/confirm.ogg": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/8cc32a6f4bb2758897b267a04a4481930bf5b958036f3b1b0725827278e99557/assets/template/audio/confirm.ogg",
+      "sha256": "sha256:8cc32a6f4bb2758897b267a04a4481930bf5b958036f3b1b0725827278e99557",
+      "size": 7679,
+      "assetType": "audio",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/audio/death.ogg": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/3399aad9cb9c4aa13930d53991c464875051dde9b89b555e04105a4bc3bad5cb/assets/template/audio/death.ogg",
+      "sha256": "sha256:3399aad9cb9c4aa13930d53991c464875051dde9b89b555e04105a4bc3bad5cb",
+      "size": 8197,
+      "assetType": "audio",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/audio/jump.ogg": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/5c2a77d137d1d20502f361b55f27cc1df7b3c9ecce6ae023a0812bcc96803e47/assets/template/audio/jump.ogg",
+      "sha256": "sha256:5c2a77d137d1d20502f361b55f27cc1df7b3c9ecce6ae023a0812bcc96803e47",
+      "size": 7452,
+      "assetType": "audio",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/audio/land.ogg": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/22ff4497b369053d3d2c92f4eb226678331f7c8c7ce2c5701a04c76743c812c3/assets/template/audio/land.ogg",
+      "sha256": "sha256:22ff4497b369053d3d2c92f4eb226678331f7c8c7ce2c5701a04c76743c812c3",
+      "size": 6934,
+      "assetType": "audio",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/audio/stomp.ogg": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/fa9859ac1b156ca58b85be6aecdc487173d71553763156d1876278b4aa240fc7/assets/template/audio/stomp.ogg",
+      "sha256": "sha256:fa9859ac1b156ca58b85be6aecdc487173d71553763156d1876278b4aa240fc7",
+      "size": 7116,
+      "assetType": "audio",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/audio/success.ogg": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/a9eb30ac3809077450f9b2c1692c12b1f8e31d55328d760e515af24009f00bc9/assets/template/audio/success.ogg",
+      "sha256": "sha256:a9eb30ac3809077450f9b2c1692c12b1f8e31d55328d760e515af24009f00bc9",
+      "size": 15047,
+      "assetType": "audio",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/cat-tree.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/515928b048f99b77e537f104409a72f78d165a25a9543ed9303c3977d51c7ac5/assets/template/cat/cat-tree.webp",
+      "sha256": "sha256:515928b048f99b77e537f104409a72f78d165a25a9543ed9303c3977d51c7ac5",
+      "size": 57196,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/felt-ground.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/4aed77d24b26cfa90382d5cc8cd1bb9f13d8c0ade839d84e7f283210aff60728/assets/template/cat/felt-ground.webp",
+      "sha256": "sha256:4aed77d24b26cfa90382d5cc8cd1bb9f13d8c0ade839d84e7f283210aff60728",
+      "size": 32290,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/felt-special-block.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/0789f09f47ce76d3cc456b3fb2719e2f221aada9ba0cf4118d670af81cb840b5/assets/template/cat/felt-special-block.webp",
+      "sha256": "sha256:0789f09f47ce76d3cc456b3fb2719e2f221aada9ba0cf4118d670af81cb840b5",
+      "size": 31098,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/fish.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/8c0200ef461110e444db5403e16571783faf4e310d66a50a70858b4367e58e4b/assets/template/cat/fish.webp",
+      "sha256": "sha256:8c0200ef461110e444db5403e16571783faf4e310d66a50a70858b4367e58e4b",
+      "size": 9242,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/idle.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/93cb6fd9452660c870555f64ee951b2e1bb098aadb988f996e88664eb4aa8235/assets/template/cat/idle.webp",
+      "sha256": "sha256:93cb6fd9452660c870555f64ee951b2e1bb098aadb988f996e88664eb4aa8235",
+      "size": 17738,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/robot.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/46e63b81112f624b4886b195ce917da464e795bb5a43db654ebe164eb1e7cbf6/assets/template/cat/robot.webp",
+      "sha256": "sha256:46e63b81112f624b4886b195ce917da464e795bb5a43db654ebe164eb1e7cbf6",
+      "size": 20310,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_00.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/c2ed659b8398345727479980aee265c89a22e0a2d72e36e1a4db8e953dbf21a5/assets/template/cat/run/frame_00.webp",
+      "sha256": "sha256:c2ed659b8398345727479980aee265c89a22e0a2d72e36e1a4db8e953dbf21a5",
+      "size": 17254,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_01.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/d1f5980b12fb7d46d0d72fe378c103b16e0de6b2e02a26684e946fde1fdeaa25/assets/template/cat/run/frame_01.webp",
+      "sha256": "sha256:d1f5980b12fb7d46d0d72fe378c103b16e0de6b2e02a26684e946fde1fdeaa25",
+      "size": 16772,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_02.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/4c2221c53e044576ecb5e3750a193a4a1a47cd1f7951ebbabb98877511bc9062/assets/template/cat/run/frame_02.webp",
+      "sha256": "sha256:4c2221c53e044576ecb5e3750a193a4a1a47cd1f7951ebbabb98877511bc9062",
+      "size": 17190,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_03.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/586b83c4ef53110bd4a734546ddda7bc36ec9bef048aff15cc3a43efd6738d8a/assets/template/cat/run/frame_03.webp",
+      "sha256": "sha256:586b83c4ef53110bd4a734546ddda7bc36ec9bef048aff15cc3a43efd6738d8a",
+      "size": 17412,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_04.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/398685be197970fb95fbe10be466327e31fd278fa755b458742e85631c85202e/assets/template/cat/run/frame_04.webp",
+      "sha256": "sha256:398685be197970fb95fbe10be466327e31fd278fa755b458742e85631c85202e",
+      "size": 17230,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_05.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/22fe2a0053089d812e81ae561549b455924923aef43befe1998d3b2a912bef26/assets/template/cat/run/frame_05.webp",
+      "sha256": "sha256:22fe2a0053089d812e81ae561549b455924923aef43befe1998d3b2a912bef26",
+      "size": 17542,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_06.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/195e24cec14deb60cc62901e710e0e3754eec0996affe4f4121b2ed218cf7fb8/assets/template/cat/run/frame_06.webp",
+      "sha256": "sha256:195e24cec14deb60cc62901e710e0e3754eec0996affe4f4121b2ed218cf7fb8",
+      "size": 17276,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_07.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/f4308999eb7c5343f30082ae752f4a9dd2aa90cfba08ef5eb111206287500bb3/assets/template/cat/run/frame_07.webp",
+      "sha256": "sha256:f4308999eb7c5343f30082ae752f4a9dd2aa90cfba08ef5eb111206287500bb3",
+      "size": 17718,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_08.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/3d7eabd34898aee7b11abe67bee0a836dc387fc8422e7077ab98417e52046e1b/assets/template/cat/run/frame_08.webp",
+      "sha256": "sha256:3d7eabd34898aee7b11abe67bee0a836dc387fc8422e7077ab98417e52046e1b",
+      "size": 17626,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_09.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/692444371f9ce7746fcde23f9924d86d8db3ed576a8c33193f3eea2ddb88ca59/assets/template/cat/run/frame_09.webp",
+      "sha256": "sha256:692444371f9ce7746fcde23f9924d86d8db3ed576a8c33193f3eea2ddb88ca59",
+      "size": 18034,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_10.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/e121065730a536c0dc340927bd39b58882702e1adf728a42b9fa47bf25cd92c9/assets/template/cat/run/frame_10.webp",
+      "sha256": "sha256:e121065730a536c0dc340927bd39b58882702e1adf728a42b9fa47bf25cd92c9",
+      "size": 17716,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_11.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/cd04699c43646c9489f3b6f7900f53bfc40e30c1111ff359fa5513be7b8ccbd0/assets/template/cat/run/frame_11.webp",
+      "sha256": "sha256:cd04699c43646c9489f3b6f7900f53bfc40e30c1111ff359fa5513be7b8ccbd0",
+      "size": 17264,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_12.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/3766cc02f5e51b035e30c06b7470fe23247e29467f23e30b7aa1a4a79bece09a/assets/template/cat/run/frame_12.webp",
+      "sha256": "sha256:3766cc02f5e51b035e30c06b7470fe23247e29467f23e30b7aa1a4a79bece09a",
+      "size": 17018,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_13.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/555da0e5f3e8172cec7349378e36ff93d5ae83d051627bb82db6e7b1868be17d/assets/template/cat/run/frame_13.webp",
+      "sha256": "sha256:555da0e5f3e8172cec7349378e36ff93d5ae83d051627bb82db6e7b1868be17d",
+      "size": 17304,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_14.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/1e8c15a52ce78f1540844a023d4560750c4be470be2de5a4248c67debcd3195c/assets/template/cat/run/frame_14.webp",
+      "sha256": "sha256:1e8c15a52ce78f1540844a023d4560750c4be470be2de5a4248c67debcd3195c",
+      "size": 16936,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_15.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/149587bab78cbaadad8bb70270aa4682d954ad8b8f3433ca2d2f2165ae66a164/assets/template/cat/run/frame_15.webp",
+      "sha256": "sha256:149587bab78cbaadad8bb70270aa4682d954ad8b8f3433ca2d2f2165ae66a164",
+      "size": 17436,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_16.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/b3ed5880a872cf499ae2c2f558aa95d5d48abf28bf9dcd2f7f1453da56d671b6/assets/template/cat/run/frame_16.webp",
+      "sha256": "sha256:b3ed5880a872cf499ae2c2f558aa95d5d48abf28bf9dcd2f7f1453da56d671b6",
+      "size": 17408,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/run/frame_17.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/46070f3c36b836557f10804b10a1da707f4d1a7bfc2b05db58706c229dc7274b/assets/template/cat/run/frame_17.webp",
+      "sha256": "sha256:46070f3c36b836557f10804b10a1da707f4d1a7bfc2b05db58706c229dc7274b",
+      "size": 18048,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/title-key-art.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/0ec03d9ffc163b1892de765d597a129bcbe6d59456741810fc3537c936e96a82/assets/template/cat/title-key-art.webp",
+      "sha256": "sha256:0ec03d9ffc163b1892de765d597a129bcbe6d59456741810fc3537c936e96a82",
+      "size": 799086,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/warm-background.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/57aff204fa6adfa090d23d58d99420cf3c7400cb71f14ddb6a400f9a10721db6/assets/template/cat/warm-background.webp",
+      "sha256": "sha256:57aff204fa6adfa090d23d58d99420cf3c7400cb71f14ddb6a400f9a10721db6",
+      "size": 646060,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/cat/yarn.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/4fea03a824c148180a794f21bfa974ab1221e4ee0ceb797b64613b6f799a38f3/assets/template/cat/yarn.webp",
+      "sha256": "sha256:4fea03a824c148180a794f21bfa974ab1221e4ee0ceb797b64613b6f799a38f3",
+      "size": 12196,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/fonts/NotoSansSC-VF.subset.woff2": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/25/game-template/game-generic/2026.09.25-typography-v1/38f4c5f927f746b3dfa4c3a5d7edf0b7a3e828e27438418fa54f9e1565289412/assets/template/fonts/NotoSansSC-VF.subset.woff2",
+      "sha256": "sha256:38f4c5f927f746b3dfa4c3a5d7edf0b7a3e828e27438418fa54f9e1565289412",
+      "size": 1869368,
+      "assetType": "font",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/fonts/Nunito-VF.subset.woff2": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/25/game-template/game-platformer/2026.09.25-typography-v1/b9b7ee104781deff4c3cb7c17f85f2cc73afd2683820e299eaec7a31fdbe24bb/assets/template/fonts/Nunito-VF.subset.woff2",
+      "sha256": "sha256:b9b7ee104781deff4c3cb7c17f85f2cc73afd2683820e299eaec7a31fdbe24bb",
+      "size": 49276,
+      "assetType": "font",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/fonts/display/Baloo2-VF.subset.woff2": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/25/game-template/game-platformer/2026.09.25-typography-v1/78488d8ed3c08e5431d8cbd30f2caaed85877c0b1594bd5bed4fbd1182b125ee/assets/template/fonts/display/Baloo2-VF.subset.woff2",
+      "sha256": "sha256:78488d8ed3c08e5431d8cbd30f2caaed85877c0b1594bd5bed4fbd1182b125ee",
+      "size": 43872,
+      "assetType": "font",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/fonts/display/ZCOOLQingKeHuangYou-Regular.subset.woff2": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/25/game-template/game-platformer/2026.09.25-typography-v1/7358992690863400c1097f04d705a806e180f333c0b625d9f377a6567cc003e4/assets/template/fonts/display/ZCOOLQingKeHuangYou-Regular.subset.woff2",
+      "sha256": "sha256:7358992690863400c1097f04d705a806e180f333c0b625d9f377a6567cc003e4",
+      "size": 1620420,
+      "assetType": "font",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/generated/foliage_near.webp": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/04/game-template/game-platformer/2026.09.04-felt-cat-50bf2384/fdec1fb885bc7c8ec2c0e40cf434f3150b739acca0f89956c5c6099dfa3ba864/assets/template/generated/foliage_near.webp",
+      "sha256": "sha256:fdec1fb885bc7c8ec2c0e40cf434f3150b739acca0f89956c5c6099dfa3ba864",
+      "size": 120604,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    },
+    "assets/template/ui/loading-background.png": {
+      "path": "https://d1oupeiobkpcny.cloudfront.net/assets/dashboard/materials/2026/09/25/game-template/game-platformer/2026.09.25-typography-v1/3b4b158f93a3e6fc6f866f1b121f106b8e178b2a68a44a2c1dba46cc4c76947e/assets/template/ui/loading-background.png",
+      "sha256": "sha256:3b4b158f93a3e6fc6f866f1b121f106b8e178b2a68a44a2c1dba46cc4c76947e",
+      "size": 540732,
+      "assetType": "image",
+      "groupId": "template",
+      "used": true
+    }
+  }
+}

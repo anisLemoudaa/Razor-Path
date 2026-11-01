@@ -1,0 +1,27 @@
+{
+  "name": "game-platformer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export": "mkdir -p dist && godot --headless --path . --export-release Web dist/index.html",
+    "verify-export": "node scripts/check-exported-pack.mjs",
+    "check": "node scripts/manus/runtime-command.cjs ./verify.mjs",
+    "test": "godot --headless --path . -s test/smoke.gd",
+    "test:responsive": "godot --headless --path . --script test/responsive_layout.gd",
+    "test:audio": "node scripts/check-audio.mjs",
+    "test:checks": "node --test test/godot-check.test.mjs test/exported-pack-profile.test.mjs test/loader-language.test.mjs",
+    "test:terrain": "godot --headless --path . --script test/terrain_regression.gd",
+    "test:finish": "godot --headless --audio-driver Dummy --path . --script test/finish_regression.gd && godot --headless --audio-driver Dummy --path . --script test/player_grounding.gd",
+    "test:terrain-render": "godot --audio-driver Dummy --path . --script test/terrain_render.gd && godot --audio-driver Dummy --path . --script test/finish_render.gd && godot --audio-driver Dummy --path . --script test/player_grounding_render.gd",
+    "test:combat": "godot --headless --path . --script test/yarn_combat.gd",
+    "test:contract": "godot --headless --audio-driver Dummy --path . --script test/gameplay_contract.gd && godot --headless --audio-driver Dummy --path . --script test/ui_contract.gd && godot --headless --audio-driver Dummy --path . --script test/tweak_regression.gd && godot --headless --audio-driver Dummy --path . --script test/vfx_regression.gd",
+    "test:audio-completion": "godot --headless --audio-driver Dummy --path . --script test/audio_completion.gd",
+    "dev": "node scripts/manus/runtime-command.cjs ./server.mjs",
+    "build": "node scripts/manus/runtime-command.cjs ./build.mjs",
+    "preview:build": "node scripts/manus/runtime-command.cjs ./preview-build.mjs",
+    "preview:status": "node scripts/manus/runtime-command.cjs ./preview-build.mjs --status",
+    "doctor": "node scripts/manus/runtime-command.cjs ./doctor.mjs",
+    "inspect": "node scripts/manus/runtime-command.cjs ./inspect-file.mjs",
+    "assets:report": "node scripts/manus/runtime-command.cjs ./asset-provenance.mjs"
+  }
+}
