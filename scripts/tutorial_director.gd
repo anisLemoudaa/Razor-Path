@@ -130,7 +130,7 @@ func _refresh() -> void:
 	var suffix := ".compact" if get_viewport().get_visible_rect().size.y < 340.0 else ""
 	body_label.text = I18n.t("tutorial.%s.%s%s" % [key, method, suffix])
 	skip_button.text = I18n.t("tutorial.skip")
-	skip_button.accessibility_name = skip_button.text
+	skip_button.set_meta("accessibility_name", skip_button.text)
 	skip_button.tooltip_text = I18n.t("tutorial.skip_hint")
 
 func skip() -> void:

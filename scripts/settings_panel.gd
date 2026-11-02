@@ -23,7 +23,7 @@ func _ready() -> void:
 		slider.value = GameAudio.get_bus_volume(bus)
 		slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		slider.custom_minimum_size = Vector2(100, 48)
-		slider.accessibility_name = caption.text
+		slider.set_meta("accessibility_name", caption.text)
 		_style_slider(slider)
 		slider.value_changed.connect(func(value: float): GameAudio.set_bus_volume(bus, value))
 		row.add_child(slider)

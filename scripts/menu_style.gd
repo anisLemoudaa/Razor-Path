@@ -143,7 +143,7 @@ static func button(text: String, primary: bool = false) -> Button:
 	if primary:
 		node.add_theme_color_override("font_outline_color", Color("#8e2f1b"))
 		node.add_theme_constant_override("outline_size", 4)
-	node.accessibility_name = text
+	node.set_meta("accessibility_name", text)
 	return node
 
 ## Menu list row: no box at rest; a light felt patch + stitch appears under the
@@ -216,7 +216,7 @@ static func quiet_button(text: String) -> Button:
 	focus.set_border_width_all(2)
 	focus.set_expand_margin_all(3)
 	node.add_theme_stylebox_override("focus", focus)
-	node.accessibility_name = text
+	node.set_meta("accessibility_name", text)
 	return node
 
 ## Translucent cocoa pill shared by footer items (licenses, Tweak Controls).

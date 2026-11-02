@@ -394,7 +394,7 @@ func build_hud() -> void:
 	pause_button.name = "PauseButton"
 	pause_button.text = "Ⅱ"
 	pause_button.tooltip_text = I18n.t("hud.pause")
-	pause_button.accessibility_name = I18n.t("hud.pause")
+	pause_button.set_meta("accessibility_name", I18n.t("hud.pause"))
 	pause_button.custom_minimum_size = Vector2(48, 48)
 	pause_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_style_round_button(pause_button, Color(1.0, 0.953, 0.86, 0.96), MENU_STYLE.STITCH, MENU_STYLE.COCOA)
@@ -406,7 +406,7 @@ func build_hud() -> void:
 	attack_button.name = "AttackButton"
 	attack_button.text = I18n.t("hud.yarn")
 	attack_button.tooltip_text = I18n.t("hud.yarn")
-	attack_button.accessibility_name = I18n.t("hud.yarn")
+	attack_button.set_meta("accessibility_name", I18n.t("hud.yarn"))
 	attack_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	attack_button.offset_left = -88
 	attack_button.offset_top = -84
@@ -873,7 +873,7 @@ func show_message(title: String, subtitle: String) -> void:
 
 func _result_button(parent: Control, key: String, callback: Callable) -> Button:
 	var button := MENU_STYLE.button(I18n.t(key), key != "result.title")
-	button.accessibility_name = button.text
+	button.set_meta("accessibility_name", button.text)
 	button.custom_minimum_size = Vector2(0, 56 if key != "result.title" else 48)
 	button.add_theme_font_size_override("font_size", 22 if key != "result.title" else 18)
 	if key == "result.title":
