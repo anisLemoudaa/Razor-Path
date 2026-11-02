@@ -6,6 +6,7 @@ const DISPLAY_FONT = preload("res://assets/template/fonts/display/display_title.
 const PREVIEW = preload("res://scripts/title_preview.gd")
 const SETTINGS = preload("res://scripts/settings_panel.gd")
 const LEADERBOARD = preload("res://scripts/leaderboard_panel.gd")
+const ANIS_STORE = preload("res://scripts/anis_store_panel.gd")
 
 const BG := Color("#07040f")
 const PANEL := Color("#120c20")
@@ -25,6 +26,7 @@ var _logo_label: Label
 var _subtitle_label: Label
 var _best_label: Label
 var _hint_label: Label
+var _coins := 1250
 
 func _ready() -> void:
 	get_tree().paused = false
@@ -81,39 +83,39 @@ func _build_ui() -> void:
 	content.alignment = BoxContainer.ALIGNMENT_CENTER
 	content_panel.add_child(content)
 
-	var eyebrow := _label("لعبة منصات دقيقة · الفصل الأول", 16, MUTED)
+	var eyebrow := _label("250 مرحلة · لا تثق بأي شيء", 16, MUTED)
 	eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	content.add_child(eyebrow)
-	var logo := _label("ASHEN\nGAUNTLET", 58, GOLD_LIGHT, DISPLAY_FONT)
+	var logo := _label("anis 2", 58, GOLD_LIGHT, DISPLAY_FONT)
 	_logo_label = logo
 	logo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	logo.add_theme_color_override("font_outline_color", Color("#5b3b0c"))
 	logo.add_theme_constant_override("outline_size", 8)
 	content.add_child(logo)
-	var arabic_title := _label("ممر الرماد", 26, GOLD, BOLD_FONT)
+	var arabic_title := _label("ابدأ من المرحلة 68", 26, GOLD, BOLD_FONT)
 	arabic_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	content.add_child(arabic_title)
 	var line := HSeparator.new()
 	line.modulate = Color(0.84, 0.62, 0.2, 0.45)
 	content.add_child(line)
-	var subtitle := _label("اقرأ الفخ. لا تثق بالهدوء.\nكل موت يعلّمك طريقًا أقصر.", 20, Color("#f3e6c4"))
+	var subtitle := _label("لا تثق بأي شيء\nأفضل وقت · 0:42   الوفيات · 3", 20, Color("#f3e6c4"))
 	_subtitle_label = subtitle
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(subtitle)
-	var play := _button("ابدأ التحدي", _start_game, true)
+	var play := _button("ابدأ اللعب", _start_game, true)
 	_start_button = play
 	_start_button.name = "StartButton"
 	play.custom_minimum_size.y = 62
 	content.add_child(play)
-	var level := _button("اختيار المرحلة", func(): _show_notice("المرحلة 01 جاهزة الآن — بقية العوالم ستُضاف تباعًا."))
+	var level := _button("ابدأ من المرحلة 68", func(): _show_notice("العالم 3 · الليل — المرحلة 68 جاهزة."))
 	content.add_child(level)
 	var secondary := HBoxContainer.new()
 	secondary.add_theme_constant_override("separation", 8)
-	secondary.add_child(_button("الإعدادات", func(): _show_notice("الإعدادات الأساسية: اهتزاز، مؤثرات، جسيمات، وحجم التحكم.")))
-	secondary.add_child(_button("المتجر", func(): _show_notice("المتجر غير مفعل في هذه الشريحة؛ لا توجد مشتريات قسرية.")))
+	secondary.add_child(_button("الإعدادات", _open_settings))
+	secondary.add_child(_button("المتجر", _open_store))
 	content.add_child(secondary)
-	var best := _label("أفضل نتيجة محلية: %06d" % SaveStore.best_score(), 15, MUTED)
+	var best := _label("عملات %s     أفضل نتيجة محلية: %06d" % ["1,250", SaveStore.best_score()], 15, MUTED)
 	_best_label = best
 	best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	content.add_child(best)
@@ -205,6 +207,13 @@ func _open_settings() -> void:
 	if is_instance_valid(_modal):
 		return
 	_modal = SETTINGS.new()
+	add_child(_modal)
+	_modal.open_panel()
+
+func _open_store() -> void:
+	if is_instance_valid(_modal):
+		return
+	_modal = ANIS_STORE.new()
 	add_child(_modal)
 	_modal.open_panel()
 

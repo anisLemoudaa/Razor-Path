@@ -1,5 +1,7 @@
 extends CharacterBody2D
 
+const ANIS_CHARACTER = preload("res://scripts/anis_character.gd")
+
 signal died
 signal shot_requested(position: Vector2, direction: float)
 signal stomped
@@ -25,6 +27,8 @@ var shot_flash := 0.0
 var stomp_grace := 0.0
 var trail_timer := 0.0
 var suppress_actions_until_release := false
+var anis_visual: Node2D
+var death_count := 0
 
 func _ready() -> void:
 	add_to_group("transient_input")
@@ -37,6 +41,9 @@ func _ready() -> void:
 	shape.shape = rect
 	shape.position = HITBOX_OFFSET
 	add_child(shape)
+	anis_visual = ANIS_CHARACTER.new()
+	anis_visual.name = "AnisVisual"
+	add_child(anis_visual)
 	queue_redraw()
 
 func _physics_process(delta: float) -> void:
@@ -47,6 +54,7 @@ func _physics_process(delta: float) -> void:
 	if not alive:
 		velocity.y += gravity * delta
 		move_and_slide()
+		_sync_visual(ANIS_CHARACTER.State.DEATH)
 		queue_redraw()
 		return
 
@@ -137,15 +145,31 @@ func _physics_process(delta: float) -> void:
 
 	if global_position.y > 820.0:
 		die()
+	_sync_visual(_visual_state())
 	queue_redraw()
+
+func _visual_state() -> int:
+	if not alive:
+		return ANIS_CHARACTER.State.DEATH
+	if not is_on_floor():
+		return ANIS_CHARACTER.State.JUMP if velocity.y < 0.0 else ANIS_CHARACTER.State.FALL
+	if absf(velocity.x) > 70.0:
+		return ANIS_CHARACTER.State.RUN
+	return ANIS_CHARACTER.State.IDLE
+
+func _sync_visual(next_state: int) -> void:
+	if is_instance_valid(anis_visual) and anis_visual.has_method("set_motion"):
+		anis_visual.set_motion(next_state, velocity, facing, death_count)
 
 func die() -> void:
 	if not alive:
 		return
 	alive = false
+	death_count += 1
 	collision_mask = 0
 	velocity = Vector2(0, -430)
 	died.emit()
+	_sync_visual(ANIS_CHARACTER.State.DEATH)
 
 func current_sprite_texture() -> Texture2D:
 	return null
@@ -157,31 +181,8 @@ func sprite_draw_rect() -> Rect2:
 	return Rect2(-24, -38, 48, 38)
 
 func _draw() -> void:
-	var bob := sin(anim_time * 10.0) * 1.5 if is_on_floor() and absf(velocity.x) > 35.0 else 0.0
-	var s := Vector2(facing, 1.0)
-	draw_set_transform(Vector2(0, bob), 0.0, s)
-	if not alive:
-		draw_circle(Vector2(-10, -12), 5, Color("#ffcc62"))
-		draw_circle(Vector2(10, -24), 4, Color("#ff5b5b"))
-		draw_line(Vector2(-15, -4), Vector2(15, -36), Color("#f2c35b"), 3.0, true)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		return
-	# Shadowed cloak/body, built from simple shapes for fast mobile rendering.
-	var cloak := PackedVector2Array([Vector2(-13, 2), Vector2(-10, -22), Vector2(0, -30), Vector2(11, -22), Vector2(14, 2), Vector2(0, 8)])
-	draw_colored_polygon(cloak, Color("#161126"))
-	draw_polyline(PackedVector2Array([Vector2(-13, 2), Vector2(-10, -22), Vector2(0, -30), Vector2(11, -22), Vector2(14, 2)]), Color("#d7a93f"), 2.5, true)
-	# Face mask and gold eye slit.
-	draw_circle(Vector2(0, -29), 9, Color("#292047"))
-	draw_arc(Vector2(0, -29), 9, PI, TAU, 16, Color("#e6bd59"), 1.5, true)
-	draw_line(Vector2(-5, -29), Vector2(5, -29), Color("#fff0b0"), 2.5, true)
-	draw_circle(Vector2(3, -29), 1.4, Color("#fff8d7"))
-	# Scarf, legs and motion trail.
-	draw_line(Vector2(-5, -9), Vector2(-17, 5 + sin(anim_time * 12.0) * 2.0), Color("#b07d14"), 3.0, true)
-	draw_line(Vector2(-5, 1), Vector2(-9, 10), Color("#e0b13e"), 4.0, true)
-	draw_line(Vector2(5, 1), Vector2(9, 10), Color("#e0b13e"), 4.0, true)
-	if absf(velocity.x) > 60.0:
-		draw_line(Vector2(-15, -2), Vector2(-24, 4), Color(0.86, 0.62, 0.2, 0.45), 2.0, true)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# Rendering is delegated to AnisCharacter so physics never depends on cosmetics.
+	pass
 
 func try_attack() -> bool:
 	if not alive or get_tree().paused or attack_cooldown_left > 0.0:
