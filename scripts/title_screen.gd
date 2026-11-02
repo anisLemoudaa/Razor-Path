@@ -20,7 +20,9 @@ var _notice: PanelContainer
 var _start_button: Button
 var _modal: CanvasLayer
 var _margin_container: MarginContainer
+var _root_row: HBoxContainer
 var _hero_panel: PanelContainer
+var _content_panel: PanelContainer
 var _content_box: VBoxContainer
 var _logo_label: Label
 var _subtitle_label: Label
@@ -58,6 +60,7 @@ func _build_ui() -> void:
 	margin.add_theme_constant_override("margin_bottom", 24)
 	add_child(margin)
 	var row := HBoxContainer.new()
+	_root_row = row
 	row.add_theme_constant_override("separation", 26)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	margin.add_child(row)
@@ -73,15 +76,24 @@ func _build_ui() -> void:
 	hero.add_child(art)
 
 	var content_panel := PanelContainer.new()
+	_content_panel = content_panel
 	content_panel.custom_minimum_size = Vector2(500, 0)
 	content_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content_panel.add_theme_stylebox_override("panel", _panel_style(PANEL, GOLD, 26))
 	row.add_child(content_panel)
+	var scroll := ScrollContainer.new()
+	scroll.name = "TitleScroll"
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	content_panel.add_child(scroll)
 	var content := VBoxContainer.new()
 	_content_box = content
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 12)
 	content.alignment = BoxContainer.ALIGNMENT_CENTER
-	content_panel.add_child(content)
+	scroll.add_child(content)
 
 	var eyebrow := _label("250 مرحلة · لا تثق بأي شيء", 16, MUTED)
 	eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -128,18 +140,27 @@ func _build_ui() -> void:
 	get_viewport().size_changed.connect(_layout_responsive)
 
 func _layout_responsive() -> void:
-	if not is_instance_valid(_hero_panel):
+	if not is_instance_valid(_hero_panel) or not is_instance_valid(_content_panel):
 		return
 	var viewport := get_viewport_rect().size
 	var compact := viewport.x < 1040.0 or viewport.y < 600.0
 	_hero_panel.visible = not compact
-	_margin_container.add_theme_constant_override("margin_left", 12 if compact else 28)
-	_margin_container.add_theme_constant_override("margin_right", 12 if compact else 28)
-	_margin_container.add_theme_constant_override("margin_top", 10 if compact else 24)
-	_margin_container.add_theme_constant_override("margin_bottom", 10 if compact else 24)
+	var horizontal_margin := 6 if viewport.x < 420.0 else 12 if compact else 28
+	var vertical_margin := 6 if viewport.y < 360.0 else 10 if compact else 24
+	_root_row.add_theme_constant_override("separation", 0 if compact else 26)
+	_margin_container.add_theme_constant_override("margin_left", horizontal_margin)
+	_margin_container.add_theme_constant_override("margin_right", horizontal_margin)
+	_margin_container.add_theme_constant_override("margin_top", vertical_margin)
+	_margin_container.add_theme_constant_override("margin_bottom", vertical_margin)
+	_content_panel.custom_minimum_size.x = maxf(0.0, viewport.x - horizontal_margin * 2.0) if compact else 500.0
+	var panel_style := _content_panel.get_theme_stylebox("panel") as StyleBoxFlat
+	panel_style.content_margin_left = 14 if compact else 28
+	panel_style.content_margin_right = 14 if compact else 28
+	panel_style.content_margin_top = 14 if compact else 28
+	panel_style.content_margin_bottom = 14 if compact else 28
 	_content_box.add_theme_constant_override("separation", 7 if compact else 12)
-	_logo_label.add_theme_font_size_override("font_size", 43 if compact else 58)
-	_subtitle_label.add_theme_font_size_override("font_size", 17 if compact else 20)
+	_logo_label.add_theme_font_size_override("font_size", 30 if viewport.y < 360.0 else 43 if compact else 58)
+	_subtitle_label.add_theme_font_size_override("font_size", 15 if viewport.y < 360.0 else 17 if compact else 20)
 	_best_label.visible = not compact
 	_hint_label.visible = not compact
 

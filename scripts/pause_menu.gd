@@ -113,6 +113,23 @@ func toggle_menu() -> void:
 	if is_open: close_menu()
 	else: open_menu()
 
+func request_main_menu_confirmation() -> void:
+	if not is_open:
+		open_menu()
+	_ask_loss(&"title")
+
+func handle_system_back() -> void:
+	if is_instance_valid(_settings):
+		_settings.close_panel()
+		_settings = null
+		return
+	if not is_open:
+		open_menu()
+	elif _confirm.visible:
+		_cancel_loss()
+	else:
+		close_menu()
+
 func open_menu() -> void:
 	if is_open: return
 	_prior_pause = get_tree().paused

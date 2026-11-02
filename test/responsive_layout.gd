@@ -12,6 +12,7 @@ func _initialize() -> void:
 	run_checks.call_deferred()
 
 func run_checks() -> void:
+	check_android_preset()
 	var store := root.get_node("TuningStore")
 	var old_mode: float = store.get_value("display_mode")
 	for display_mode in [0, 1]:
@@ -34,13 +35,26 @@ func run_checks() -> void:
 	await process_frame
 	quit(1 if failed else 0)
 
+func check_android_preset() -> void:
+	var config := ConfigFile.new()
+	if config.load("res://export_presets.cfg") != OK:
+		failed = true
+		push_error("Android export preset cannot be loaded")
+		return
+	if int(config.get_value("preset.1.options", "screen/orientation", -1)) != 0:
+		failed = true
+		push_error("Android build is not configured for landscape orientation")
+	if not bool(config.get_value("preset.1.options", "screen/immersive_mode", false)):
+		failed = true
+		push_error("Android immersive fullscreen is disabled")
+
 func check_title(viewport_size: Vector2i) -> void:
 	var title = load("res://scenes/title_screen.tscn").instantiate()
 	root.add_child(title)
 	await process_frame
 	await process_frame
-	var content: Control = title.get_node("ResponsiveCenter/Content")
-	check_rect(content.get_global_rect(), title.get_viewport_rect().size, "title", viewport_size)
+	var content: Control = title._content_panel
+	check_rect(content.get_global_rect(), title.get_viewport_rect().size, "title panel", viewport_size)
 	title.queue_free()
 	await process_frame
 
@@ -52,22 +66,51 @@ func check_game(viewport_size: Vector2i) -> void:
 	var top_bar: Control = game.get_node("HudLayer/ResponsiveHud/TopBar")
 	var logical_size: Vector2 = game.get_viewport_rect().size
 	check_rect(top_bar.get_global_rect(), logical_size, "hud", viewport_size)
-	check_rect(game.attack_button.get_global_rect(), logical_size, "attack button", viewport_size)
 	var pixel_scale: float = root.get_final_transform().x.length()
-	if game.attack_button.size.y * pixel_scale < 40 or game.score_label.get_theme_font_size("font_size") * pixel_scale < 14:
+	var touch_controls: Array[Control] = [game.left_button, game.right_button, game.jump_button, game.attack_button]
+	for index in touch_controls.size():
+		var control := touch_controls[index]
+		check_rect(control.get_global_rect(), logical_size, control.name, viewport_size)
+		if control.size.x * pixel_scale < 48.0 or control.size.y * pixel_scale < 48.0:
+			failed = true
+			push_error("touch target smaller than 48 physical pixels: %s at %s" % [control.name, viewport_size])
+		for other_index in range(index + 1, touch_controls.size()):
+			if control.get_global_rect().intersects(touch_controls[other_index].get_global_rect()):
+				failed = true
+				push_error("touch targets overlap: %s and %s at %s" % [control.name, touch_controls[other_index].name, viewport_size])
+	if game.score_label.get_theme_font_size("font_size") * pixel_scale < 14:
 		failed = true
-		push_error("physical mobile HUD text or target too small")
+		push_error("physical mobile HUD text too small")
 	var pause_button: Button = game.get("pause_button")
 	if pause_button == null:
 		failed = true
 		push_error("pause button is missing at %s" % viewport_size)
 	else:
 		check_rect(pause_button.get_global_rect(), logical_size, "pause button", viewport_size)
+	var back_button: Button = game.get("back_button")
+	if back_button == null or not back_button.visible:
+		failed = true
+		push_error("visible back button is missing at %s" % viewport_size)
 	var pause_menu = game.get_node_or_null("PauseMenu")
 	if pause_menu == null:
 		failed = true
 		push_error("pause menu is missing at %s" % viewport_size)
 	else:
+		game._handle_system_back()
+		if not pause_menu.is_open:
+			failed = true
+			push_error("system Back did not open pause menu")
+		game._handle_system_back()
+		if pause_menu.is_open:
+			failed = true
+			push_error("system Back did not close pause menu")
+		game._request_return_to_menu()
+		if not pause_menu.is_open or not pause_menu._confirm.visible:
+			failed = true
+			push_error("visible Back control did not request return confirmation")
+		pause_menu._cancel_loss()
+		pause_menu.close_menu()
+		await process_frame
 		pause_menu.open_menu()
 		await process_frame
 		var pause_panel_rect: Rect2 = pause_menu.panel.get_global_rect()
@@ -84,16 +127,9 @@ func check_game(viewport_size: Vector2i) -> void:
 	if game.camera.limit_top != expected_top or game.camera.limit_bottom != expected_bottom:
 		failed = true
 		push_error("camera bounds do not match %s at %s" % [logical_size, viewport_size])
-	for sprite in game.get_node("WorldArt").layer_sprites:
-		var covered_height: float = sprite.texture.get_height() * sprite.scale.y
-		if covered_height + 0.5 < logical_size.y:
-			failed = true
-			push_error("background does not cover %s at %s" % [logical_size, viewport_size])
-	var sky: Sprite2D = game.get_node("WorldArt").layer_sprites[0]
-	var sky_rect := sky.get_global_transform_with_canvas() * sky.get_rect()
-	if sky_rect.position.y > 0.5 or sky_rect.end.y < logical_size.y - 0.5:
-		failed = true
-		push_error("sky does not cover the actual camera viewport at %s" % viewport_size)
+	var art: Node = game.get_node("WorldArt")
+	for layer: Control in [art.background, art.foreground]:
+		check_rect(layer.get_global_rect(), logical_size, "background layer", viewport_size)
 	game.queue_free()
 	await process_frame
 
@@ -143,17 +179,27 @@ func check_touch_bounds() -> void:
 		if joystick._active:
 			failed = true
 			push_error("letterbox press activated joystick")
-	joystick._begin(7, logical_size * 0.5)
-	joystick._update(logical_size * 0.5 + Vector2(80, -80))
+	var center := logical_size * 0.5
+	joystick._begin(7, center)
+	joystick._update(center + Vector2(80, 0), 7)
+	joystick._begin(11, center + Vector2(0, 80))
+	joystick._update(center + Vector2(0, 0), 11)
 	if joystick.vector.x < 0.3 or joystick.vector.y > -0.3:
 		failed = true
-		push_error("in-viewport touch drag did not move/jump")
+		push_error("independent touch drags did not combine movement and jump")
 	var release := InputEventScreenTouch.new()
 	release.index = 7
 	release.position = Vector2(-10, -10)
 	joystick._unhandled_input(release)
+	if not joystick._active or absf(joystick.vector.x) > 0.05 or joystick.vector.y > -0.3:
+		failed = true
+		push_error("releasing one finger cancelled the other active touch")
+	var final_release := InputEventScreenTouch.new()
+	final_release.index = 11
+	final_release.position = Vector2(-10, -10)
+	joystick._unhandled_input(final_release)
 	if joystick._active or joystick.vector != Vector2.ZERO:
 		failed = true
-		push_error("releasing in the letterbox left joystick stuck")
+		push_error("releasing the final finger left touch input stuck")
 	joystick.queue_free()
 	await process_frame

@@ -53,6 +53,7 @@ var message_panel: PanelContainer
 var touch_input: Node
 var pause_menu = null
 var pause_button: Button
+var back_button: Button
 var attack_button: Button
 var left_button: Button
 var right_button: Button
@@ -402,16 +403,25 @@ func build_hud() -> void:
 	pause_button.add_theme_font_size_override("font_size", 22)
 	pause_button.pressed.connect(toggle_pause)
 	row.add_child(pause_button)
+	back_button = Button.new()
+	back_button.name = "BackButton"
+	back_button.text = "↩"
+	back_button.tooltip_text = I18n.t("pause.menu")
+	back_button.set_meta("accessibility_name", I18n.t("pause.menu"))
+	back_button.custom_minimum_size = Vector2(48, 48)
+	back_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_style_round_button(back_button, Color(1.0, 0.953, 0.86, 0.96), MENU_STYLE.STITCH, MENU_STYLE.COCOA)
+	back_button.add_theme_font_override("font", MENU_STYLE.BOLD)
+	back_button.add_theme_font_size_override("font_size", 22)
+	back_button.pressed.connect(_request_return_to_menu)
+	row.add_child(back_button)
 	attack_button = Button.new()
 	attack_button.name = "AttackButton"
 	attack_button.text = I18n.t("hud.yarn")
 	attack_button.tooltip_text = I18n.t("hud.yarn")
 	attack_button.set_meta("accessibility_name", I18n.t("hud.yarn"))
 	attack_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	attack_button.offset_left = -88
-	attack_button.offset_top = -84
-	attack_button.offset_right = -16
-	attack_button.offset_bottom = -16
+	attack_button.custom_minimum_size = Vector2(96, 96)
 	_style_round_button(attack_button, Color(MENU_STYLE.ACCENT, 0.94), Color("#9b3520"), Color("#fffaf0"))
 	attack_button.add_theme_font_override("font", MENU_STYLE.BOLD)
 	attack_button.add_theme_font_size_override("font_size", 15)
@@ -420,24 +430,12 @@ func build_hud() -> void:
 	hud_root.add_child(attack_button)
 	left_button = _make_touch_button("◀", "move_left")
 	left_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	left_button.offset_left = 22
-	left_button.offset_top = -92
-	left_button.offset_right = 94
-	left_button.offset_bottom = -20
 	hud_root.add_child(left_button)
 	right_button = _make_touch_button("▶", "move_right")
 	right_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	right_button.offset_left = 102
-	right_button.offset_top = -92
-	right_button.offset_right = 174
-	right_button.offset_bottom = -20
 	hud_root.add_child(right_button)
 	jump_button = _make_touch_button("▲", "jump")
 	jump_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	jump_button.offset_left = -104
-	jump_button.offset_top = -96
-	jump_button.offset_right = -20
-	jump_button.offset_bottom = -12
 	hud_root.add_child(jump_button)
 	get_viewport().size_changed.connect(_layout_hud)
 	_layout_hud()
@@ -482,6 +480,27 @@ func _make_touch_button(label: String, action: StringName) -> Button:
 func _layout_hud() -> void:
 	if not is_instance_valid(hud_root): return
 	var size := get_viewport_rect().size
+	var target := clampf(minf(size.x * 0.15, size.y * 0.22), 72.0, 128.0)
+	var margin := clampf(minf(size.x, size.y) * 0.035, 6.0, 30.0)
+	if is_instance_valid(left_button):
+		for button in [left_button, right_button, jump_button, attack_button]:
+			button.custom_minimum_size = Vector2(target, target)
+		left_button.offset_left = margin
+		left_button.offset_right = margin + target
+		left_button.offset_top = -margin - target
+		left_button.offset_bottom = -margin
+		right_button.offset_left = margin + target + 12.0
+		right_button.offset_right = margin + target * 2.0 + 12.0
+		right_button.offset_top = -margin - target
+		right_button.offset_bottom = -margin
+		jump_button.offset_left = -margin - target
+		jump_button.offset_right = -margin
+		jump_button.offset_top = -margin - target
+		jump_button.offset_bottom = -margin
+		attack_button.offset_left = -margin - target
+		attack_button.offset_right = -margin
+		attack_button.offset_top = -margin * 2.0 - target * 2.0
+		attack_button.offset_bottom = -margin - target
 	for label in [score_label, coin_label, time_label]:
 		label.add_theme_font_size_override("font_size", 14 if size.x < 400 else 17 if size.x < 800 else 19)
 		label.add_theme_font_override("font", MENU_STYLE.trimmed(MENU_STYLE.SMALL_HEADING, label.get_theme_font_size("font_size"), 0.26, 0.3))
@@ -501,6 +520,7 @@ func _layout_hud() -> void:
 	score_caption.visible = size.y >= 240 and size.x >= 400
 	top.get_node("HudContent/Stats").add_theme_constant_override("separation", 6 if compact else 10)
 	top.get_node("HudContent/Stats/Route").visible = size.y >= 340 and size.x >= 700
+	if is_instance_valid(back_button): back_button.visible = size.x >= 300
 	top.offset_left = 12
 	top.offset_right = -12
 	_fit_hud_height()
@@ -526,6 +546,8 @@ func _sync_touch_controls() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PAUSED or what == NOTIFICATION_UNPAUSED:
 		_sync_touch_controls()
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_handle_system_back()
 
 func make_hud_label(text: String, minimum_size: Vector2) -> Label:
 	var label := Label.new()
@@ -681,12 +703,14 @@ func _on_goal_reached() -> void:
 	if not _accept_game_event():
 		return
 	if coins < int(stage.required_fish):
-		if not goal_hint_shown:
-			goal_hint_shown = true
-			GameAudio.play(&"invalid")
-		route_label.text = I18n.t("stage.need_fish", {"count": int(stage.required_fish) - coins})
-		return
+			if not goal_hint_shown:
+				goal_hint_shown = true
+				GameAudio.play(&"invalid")
+			route_label.text = I18n.t("stage.need_fish", {"count": int(stage.required_fish) - coins})
+			return
 	finished = true
+	if is_instance_valid(player) and player.has_method("play_victory"):
+		player.play_victory()
 	run_score.award("time_second", int(time_left))
 	update_hud()
 	_freeze_stage()
@@ -896,6 +920,18 @@ func toggle_pause() -> void:
 		return
 	pause_menu.toggle_menu()
 
+func _request_return_to_menu() -> void:
+	if finished or resetting or not is_instance_valid(pause_menu): return
+	pause_menu.request_main_menu_confirmation()
+
+func _handle_system_back() -> void:
+	if finished:
+		return_to_main_menu()
+	elif resetting or not is_instance_valid(pause_menu):
+		return
+	else:
+		pause_menu.handle_system_back()
+
 func return_to_main_menu() -> void:
 	GameAudio.stop_game()
 	TuningStore.end_run()
@@ -911,11 +947,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_pause()
 		get_viewport().set_input_as_handled()
 		return
-	if finished and event.is_action_pressed("start"):
-		var focused := get_viewport().gui_get_focus_owner()
-		if focused is Button: focused.pressed.emit()
-		get_viewport().set_input_as_handled()
-
+		if finished and event.is_action_pressed("start"):
+			var focused := get_viewport().gui_get_focus_owner()
+			if focused is Button: focused.pressed.emit()
+			get_viewport().set_input_as_handled()
 
 func _exit_tree() -> void:
 	GameAudio.stop_game()

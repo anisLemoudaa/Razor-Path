@@ -12,6 +12,7 @@ signal trail_requested(position: Vector2)
 const HITBOX_SIZE := Vector2(20.0, 28.0)
 const HITBOX_OFFSET := Vector2(0, -2)
 const FOOT_Y := 16.0
+const LAND_POSE_SECONDS := 0.18
 
 var alive := true
 var facing := 1.0
@@ -22,6 +23,7 @@ var anim_time := 0.0
 var touch_input: Node = null
 var touch_jump_was_pressed := false
 var was_on_floor := false
+var land_pose_left := 0.0
 var attack_cooldown_left := 0.0
 var shot_flash := 0.0
 var stomp_grace := 0.0
@@ -43,11 +45,13 @@ func _ready() -> void:
 	add_child(shape)
 	anis_visual = ANIS_CHARACTER.new()
 	anis_visual.name = "AnisVisual"
+	anis_visual.reduced_motion = TuningStore.get_player_setting("reduced_motion") > 0.5
 	add_child(anis_visual)
 	queue_redraw()
 
 func _physics_process(delta: float) -> void:
 	stomp_grace = maxf(0.0, stomp_grace - delta)
+	land_pose_left = maxf(0.0, land_pose_left - delta)
 	attack_cooldown_left = maxf(0.0, attack_cooldown_left - delta)
 	shot_flash = maxf(0.0, shot_flash - delta)
 	var gravity := TuningStore.get_value("gravity")
@@ -105,6 +109,7 @@ func _physics_process(delta: float) -> void:
 	var vertical_speed_before_move := velocity.y
 	move_and_slide()
 	if not was_on_floor and is_on_floor() and vertical_speed_before_move > 140.0:
+		land_pose_left = LAND_POSE_SECONDS
 		landed.emit(global_position + Vector2(0, FOOT_Y))
 	was_on_floor = is_on_floor()
 	trail_timer = maxf(0.0, trail_timer - delta)
@@ -153,6 +158,8 @@ func _visual_state() -> int:
 		return ANIS_CHARACTER.State.DEATH
 	if not is_on_floor():
 		return ANIS_CHARACTER.State.JUMP if velocity.y < 0.0 else ANIS_CHARACTER.State.FALL
+	if land_pose_left > 0.0:
+		return ANIS_CHARACTER.State.LAND
 	if absf(velocity.x) > 70.0:
 		return ANIS_CHARACTER.State.RUN
 	return ANIS_CHARACTER.State.IDLE
@@ -160,6 +167,14 @@ func _visual_state() -> int:
 func _sync_visual(next_state: int) -> void:
 	if is_instance_valid(anis_visual) and anis_visual.has_method("set_motion"):
 		anis_visual.set_motion(next_state, velocity, facing, death_count)
+
+func play_victory() -> void:
+	if is_instance_valid(anis_visual):
+		anis_visual.set_motion(ANIS_CHARACTER.State.WIN, Vector2.ZERO, facing, death_count)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_UNPAUSED and is_instance_valid(anis_visual):
+		anis_visual.reduced_motion = TuningStore.get_player_setting("reduced_motion") > 0.5
 
 func die() -> void:
 	if not alive:

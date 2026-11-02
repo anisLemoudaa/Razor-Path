@@ -21,6 +21,7 @@ boot_splash/bg_color=Color(0.14118, 0.11765, 0.15686, 1)
 config/name="Ashen Gauntlet"
 run/main_scene="res://scenes/title_screen.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
+config/quit_on_go_back=false
 
 [autoload]
 

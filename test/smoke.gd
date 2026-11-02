@@ -64,6 +64,8 @@ func _run() -> void:
 		{"name": "checkpoint", "method": "spawn_checkpoint_burst"},
 		{"name": "finish", "method": "spawn_finish_confetti"},
 	]
+	paused = true
+	visual_effects.reset_effects()
 	for sample: Dictionary in effect_samples:
 		var effect_name := str(sample["name"])
 		var previous_count := int(visual_effects.call("get_spawn_count", effect_name))
@@ -76,6 +78,7 @@ func _run() -> void:
 		if int(visual_effects.call("get_spawn_count", effect_name)) != previous_count + 1:
 			_fail("particle preset did not record its burst: " + effect_name)
 			return
+	paused = false
 	pause_button.pressed.emit()
 	await process_frame
 	if not bool(pause_menu.get("is_open")) or not paused:
@@ -131,14 +134,16 @@ func _run() -> void:
 	var touch_start_x := player.position.x
 	var touch_start_y := player.position.y
 	var touch_min_y := touch_start_y
+	var touch_area := get_root().get_visible_rect().size
+	var touch_origin := touch_area * Vector2(0.4, 0.75)
 	var touch_start := InputEventScreenTouch.new()
 	touch_start.index = 0
-	touch_start.position = Vector2(120, 600)
+	touch_start.position = touch_origin
 	touch_start.pressed = true
 	Input.parse_input_event(touch_start)
 	var touch_drag := InputEventScreenDrag.new()
 	touch_drag.index = 0
-	touch_drag.position = Vector2(210, 500)
+	touch_drag.position = touch_origin + Vector2(90, -100)
 	Input.parse_input_event(touch_drag)
 	var touch_timer := create_timer(0.35)
 	while touch_timer.time_left > 0.0:
