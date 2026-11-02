@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,6 +18,44 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Android Java toolchain
+        shell: bash
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-17-jdk-headless ca-certificates unzip
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME/bin" >> "$GITHUB_PATH"
+          java -version
+          keytool -help >/dev/null
+
+      - name: Configure Godot Android editor settings
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.config/godot" "$HOME/.android"
+          keytool -genkeypair -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "/usr/local/lib/android/sdk"
+          export/android/java_sdk_path = "/usr/lib/jvm/java-17-openjdk-amd64"
+          EOF
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+          test -f "$HOME/.android/debug.keystore"
+          test -d /usr/local/lib/android/sdk
+          test -x "$JAVA_HOME/bin/java"
 
       - name: Import project
         run: godot --headless --editor --quit --audio-driver Dummy
@@ -38,18 +77,21 @@ jobs:
         run: mkdir -p build && godot --headless --path . --export-release Web build/index.html
 
       - name: Export Android APK
-        run: mkdir -p build && godot --headless --path . --export-debug Android build/AshenGauntlet.apk
+        run: |
+          mkdir -p build/android
+          godot --headless --path . --export-debug Android build/android/RazorPath-debug.apk
+          test -s build/android/RazorPath-debug.apk
 
       - name: Upload Web artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ashen-gauntlet-web
-          path: build/
+          name: razor-path-web
+          path: build/index.html
           if-no-files-found: error
 
       - name: Upload Android APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ashen-gauntlet-apk
-          path: build/AshenGauntlet.apk
+          name: razor-path-android-apk
+          path: build/android/RazorPath-debug.apk
           if-no-files-found: error
