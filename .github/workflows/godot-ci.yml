@@ -25,7 +25,9 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-17-jdk-headless ca-certificates unzip
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export ANDROID_HOME=/usr/lib/android-sdk
           echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "$JAVA_HOME/bin" >> "$GITHUB_PATH"
           java -version
           keytool -help >/dev/null
@@ -47,14 +49,14 @@ jobs:
           [gd_resource type="EditorSettings" format=3]
 
           [resource]
-          export/android/android_sdk_path = "/usr/local/lib/android/sdk"
+          export/android/android_sdk_path = "/usr/lib/android-sdk"
           export/android/java_sdk_path = "/usr/lib/jvm/java-17-openjdk-amd64"
           EOF
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
           test -f "$HOME/.android/debug.keystore"
-          test -d /usr/local/lib/android/sdk
+          test -d /usr/lib/android-sdk
           test -x "$JAVA_HOME/bin/java"
 
       - name: Import project
