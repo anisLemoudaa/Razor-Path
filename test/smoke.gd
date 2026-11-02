@@ -329,8 +329,11 @@ func _measure_full_jump_rise(player: CharacterBody2D) -> float:
 
 func _send_physical_key(keycode: Key, pressed: bool) -> void:
 	var event := InputEventKey.new()
-	event.keycode = keycode
+	# Physical bindings are matched through physical_keycode. Leaving keycode
+	# unset keeps this deterministic across Godot 4.4 and newer runtimes.
+	event.keycode = KEY_NONE
 	event.physical_keycode = keycode
+	event.key_label = keycode
 	event.pressed = pressed
 	Input.parse_input_event(event)
 
