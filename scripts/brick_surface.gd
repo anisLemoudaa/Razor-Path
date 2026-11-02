@@ -1,18 +1,22 @@
 extends Node2D
-## Finish the outer edge while keeping texture joins and the walking surface flat.
 
-const TEXTURE = preload("res://assets/template/cat/felt-ground.webp")
-const SURFACE_FINISH = preload("res://scripts/surface_finish.gd")
-const SOURCE_RECT := Rect2(0, 0, 256, 256)
-const TILE_SIZE := 168.0
-const EDGE_RADIUS := 8.0
 var surface_size := Vector2.ZERO
 
-
 func _ready() -> void:
-	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	queue_redraw()
 
-
 func _draw() -> void:
-	SURFACE_FINISH.draw_tiles(self, TEXTURE, Rect2(Vector2.ZERO, surface_size), SOURCE_RECT, TILE_SIZE, EDGE_RADIUS)
+	if surface_size.x <= 0.0 or surface_size.y <= 0.0:
+		return
+	var r := Rect2(Vector2.ZERO, surface_size)
+	draw_rect(r, Color("#100b1c"), true)
+	draw_rect(Rect2(0, 0, surface_size.x, 9), Color("#2b1f52"), true)
+	draw_line(Vector2(0, 2), Vector2(surface_size.x, 2), Color("#fff0b0"), 2.0, true)
+	draw_line(Vector2(0, 10), Vector2(surface_size.x, 10), Color("#d4af37"), 2.0, true)
+	draw_line(Vector2(0, surface_size.y - 3), Vector2(surface_size.x, surface_size.y - 3), Color("#05030a"), 4.0, true)
+	var columns := maxi(2, int(surface_size.x / 90.0))
+	for i in columns:
+		var x := (float(i) + 0.5) * surface_size.x / float(columns)
+		draw_line(Vector2(x, 18), Vector2(x - 8, surface_size.y - 10), Color(0.35, 0.25, 0.54, 0.32), 1.0, true)
+		if i % 2 == 0:
+			draw_circle(Vector2(x + 12, 28), 2.0, Color(0.84, 0.68, 0.24, 0.35))

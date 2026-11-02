@@ -1,0 +1,38 @@
+name: Godot CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4.1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Import project
+        run: godot --headless --editor --quit --audio-driver Dummy
+
+      - name: Run gameplay and UI contracts
+        run: godot --headless --audio-driver Dummy --path . --script test/gameplay_contract.gd && godot --headless --audio-driver Dummy --path . --script test/ui_contract.gd && godot --headless --audio-driver Dummy --path . --script test/tweak_regression.gd && godot --headless --audio-driver Dummy --path . --script test/vfx_regression.gd
+
+      - name: Run smoke test
+        run: godot --headless --path . -s test/smoke.gd
+
+      - name: Export Web build
+        run: mkdir -p build && godot --headless --path . --export-release Web build/index.html
+
+      - name: Upload Web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ashen-gauntlet-web
+          path: build/
+          if-no-files-found: error

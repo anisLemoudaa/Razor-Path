@@ -7,37 +7,10 @@ signal jumped(position: Vector2)
 signal landed(position: Vector2)
 signal trail_requested(position: Vector2)
 
-const SPRITE_GROUNDING = preload("res://scripts/sprite_grounding.gd")
-const HITBOX_RADIUS := 18.0
-const HITBOX_HEIGHT := 52.0
+const HITBOX_SIZE := Vector2(20.0, 28.0)
 const HITBOX_OFFSET := Vector2(0, -2)
-const FOOT_Y := HITBOX_OFFSET.y + HITBOX_HEIGHT * 0.5
-const SPRITE_SCALE := 0.62
+const FOOT_Y := 16.0
 
-const HERO_TEXTURE = preload("res://assets/template/cat/idle.webp")
-const RUN_FRAMES: Array[Texture2D] = [
-	preload("res://assets/template/cat/run/frame_00.webp"),
-	preload("res://assets/template/cat/run/frame_01.webp"),
-	preload("res://assets/template/cat/run/frame_02.webp"),
-	preload("res://assets/template/cat/run/frame_03.webp"),
-	preload("res://assets/template/cat/run/frame_04.webp"),
-	preload("res://assets/template/cat/run/frame_05.webp"),
-	preload("res://assets/template/cat/run/frame_06.webp"),
-	preload("res://assets/template/cat/run/frame_07.webp"),
-	preload("res://assets/template/cat/run/frame_08.webp"),
-	preload("res://assets/template/cat/run/frame_09.webp"),
-	preload("res://assets/template/cat/run/frame_10.webp"),
-	preload("res://assets/template/cat/run/frame_11.webp"),
-	preload("res://assets/template/cat/run/frame_12.webp"),
-	preload("res://assets/template/cat/run/frame_13.webp"),
-	preload("res://assets/template/cat/run/frame_14.webp"),
-	preload("res://assets/template/cat/run/frame_15.webp"),
-	preload("res://assets/template/cat/run/frame_16.webp"),
-	preload("res://assets/template/cat/run/frame_17.webp")
-]
-var idle_texture: Texture2D = HERO_TEXTURE
-var run_frames: Array[Texture2D] = RUN_FRAMES.duplicate()
-var sprite_grounding := SPRITE_GROUNDING.new()
 var alive := true
 var facing := 1.0
 var spawn_position := Vector2.ZERO
@@ -59,10 +32,9 @@ func _ready() -> void:
 	collision_mask = 1 | 4
 	spawn_position = global_position
 	var shape := CollisionShape2D.new()
-	var capsule := CapsuleShape2D.new()
-	capsule.radius = HITBOX_RADIUS
-	capsule.height = HITBOX_HEIGHT
-	shape.shape = capsule
+	var rect := RectangleShape2D.new()
+	rect.size = HITBOX_SIZE
+	shape.shape = rect
 	shape.position = HITBOX_OFFSET
 	add_child(shape)
 	queue_redraw()
@@ -116,7 +88,7 @@ func _physics_process(delta: float) -> void:
 		velocity.y = -TuningStore.get_value("jump_power")
 		jump_buffer = 0.0
 		coyote_time = 0.0
-		jumped.emit(global_position + Vector2(0, 22))
+		jumped.emit(global_position + Vector2(0, FOOT_Y))
 	var jump_release_speed := TuningStore.get_value("jump_release_speed")
 	if jump_released and velocity.y < -jump_release_speed:
 		velocity.y = -jump_release_speed
@@ -125,14 +97,13 @@ func _physics_process(delta: float) -> void:
 	var vertical_speed_before_move := velocity.y
 	move_and_slide()
 	if not was_on_floor and is_on_floor() and vertical_speed_before_move > 140.0:
-		landed.emit(global_position + Vector2(0, 26))
+		landed.emit(global_position + Vector2(0, FOOT_Y))
 	was_on_floor = is_on_floor()
 	trail_timer = maxf(0.0, trail_timer - delta)
 	if is_on_floor() and absf(velocity.x) > 70.0 and trail_timer <= 0.0:
 		trail_timer = 0.14
 		trail_requested.emit(global_position + Vector2(0, FOOT_Y))
-	# Resolve every top contact before applying side damage. A bounce changes
-	# velocity, so all contacts must use the pre-move descent and foot position.
+
 	var enemy_contacts: Array[KinematicCollision2D] = []
 	var stomped_any := false
 	for index in get_slide_collision_count():
@@ -177,36 +148,40 @@ func die() -> void:
 	died.emit()
 
 func current_sprite_texture() -> Texture2D:
-	if alive and is_on_floor() and absf(velocity.x) > 40.0 and not run_frames.is_empty():
-		return run_frames[int(anim_time * 12.0) % run_frames.size()]
-	return idle_texture
-
+	return null
 
 func sprite_pixel_scale() -> Vector2:
-	var squash := Vector2.ONE
-	if not alive:
-		squash = Vector2(1.22, 0.78)
-	else:
-		# Animate about the feet: grounded bob and recoil must not translate them.
-		if is_on_floor() and absf(velocity.x) > 40.0:
-			squash.y += sin(anim_time * 18.0) * 0.025
-		squash *= Vector2(1.0 - shot_flash * 0.6, 1.0 + shot_flash * 0.2)
-	return Vector2.ONE * SPRITE_SCALE * squash
-
+	return Vector2.ONE
 
 func sprite_draw_rect() -> Rect2:
-	return sprite_grounding.visible_rect(current_sprite_texture(), sprite_pixel_scale(), FOOT_Y)
-
+	return Rect2(-24, -38, 48, 38)
 
 func _draw() -> void:
-	var texture := current_sprite_texture()
-	var canvas: Rect2 = sprite_grounding.canvas_rect(texture, sprite_pixel_scale(), FOOT_Y)
-	if canvas.has_area():
-		# Mirror around the authored canvas center, never the changing alpha extent.
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2(facing, 1.0))
-		draw_texture_rect(texture, canvas, false)
+	var bob := sin(anim_time * 10.0) * 1.5 if is_on_floor() and absf(velocity.x) > 35.0 else 0.0
+	var s := Vector2(facing, 1.0)
+	draw_set_transform(Vector2(0, bob), 0.0, s)
+	if not alive:
+		draw_circle(Vector2(-10, -12), 5, Color("#ffcc62"))
+		draw_circle(Vector2(10, -24), 4, Color("#ff5b5b"))
+		draw_line(Vector2(-15, -4), Vector2(15, -36), Color("#f2c35b"), 3.0, true)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
+		return
+	# Shadowed cloak/body, built from simple shapes for fast mobile rendering.
+	var cloak := PackedVector2Array([Vector2(-13, 2), Vector2(-10, -22), Vector2(0, -30), Vector2(11, -22), Vector2(14, 2), Vector2(0, 8)])
+	draw_colored_polygon(cloak, Color("#161126"))
+	draw_polyline(PackedVector2Array([Vector2(-13, 2), Vector2(-10, -22), Vector2(0, -30), Vector2(11, -22), Vector2(14, 2)]), Color("#d7a93f"), 2.5, true)
+	# Face mask and gold eye slit.
+	draw_circle(Vector2(0, -29), 9, Color("#292047"))
+	draw_arc(Vector2(0, -29), 9, PI, TAU, 16, Color("#e6bd59"), 1.5, true)
+	draw_line(Vector2(-5, -29), Vector2(5, -29), Color("#fff0b0"), 2.5, true)
+	draw_circle(Vector2(3, -29), 1.4, Color("#fff8d7"))
+	# Scarf, legs and motion trail.
+	draw_line(Vector2(-5, -9), Vector2(-17, 5 + sin(anim_time * 12.0) * 2.0), Color("#b07d14"), 3.0, true)
+	draw_line(Vector2(-5, 1), Vector2(-9, 10), Color("#e0b13e"), 4.0, true)
+	draw_line(Vector2(5, 1), Vector2(9, 10), Color("#e0b13e"), 4.0, true)
+	if absf(velocity.x) > 60.0:
+		draw_line(Vector2(-15, -2), Vector2(-24, 4), Color(0.86, 0.62, 0.2, 0.45), 2.0, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func try_attack() -> bool:
 	if not alive or get_tree().paused or attack_cooldown_left > 0.0:
@@ -214,9 +189,8 @@ func try_attack() -> bool:
 	TuningStore.apply_boundary("NEXT_ACTION")
 	attack_cooldown_left = TuningStore.get_value("attack_cooldown")
 	shot_flash = 0.12
-	shot_requested.emit(global_position + Vector2(0, 8), facing)
+	shot_requested.emit(global_position + Vector2(0, -8), facing)
 	return true
-
 
 func clear_input() -> void:
 	jump_buffer = 0.0

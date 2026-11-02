@@ -2,13 +2,13 @@ extends RefCounted
 ## Felted-wool UI kit (materials drawn by felt_kit.gd): cream felt cards with stitched borders, chunky display
 ## type for titles/headings/numbers, Nunito (+ Noto Sans SC) for body copy and buttons.
 
-const INK := Color("#42291d")
-const CREAM := Color("#fff1d1")
-const ACCENT := Color("#d85537")
-const STITCH := Color("#b67c51")
-const WOOL := Color("#f6e2bb")
-const COCOA := Color("#6b3a24")
-const MUTED := Color("#8a5a3c")
+const INK := Color("#f3e6c4")
+const CREAM := Color("#120c20")
+const ACCENT := Color("#e0b13e")
+const STITCH := Color("#d4af37")
+const WOOL := Color("#1a1233")
+const COCOA := Color("#fff0b0")
+const MUTED := Color("#a89a72")
 const FONT := preload("res://assets/template/fonts/ui_regular.tres")
 const MEDIUM := preload("res://assets/template/fonts/ui_medium.tres")
 const BOLD := preload("res://assets/template/fonts/ui_bold.tres")

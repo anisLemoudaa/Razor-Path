@@ -2,13 +2,14 @@ extends Node
 
 class Coin:
 	extends Area2D
-	const TEXTURE = preload("res://assets/template/cat/fish.webp")
 	signal collected(position: Vector2)
 	var consumed := false
 	var t := 0.0
+	var base_y := 0.0
 	func _ready() -> void:
 		collision_layer = 0
 		collision_mask = 2
+		base_y = position.y
 		var shape := CollisionShape2D.new()
 		var circle := CircleShape2D.new()
 		circle.radius = 14
@@ -18,7 +19,7 @@ class Coin:
 		queue_redraw()
 	func _process(delta: float) -> void:
 		t += delta
-		position.y += sin(t * 4.0) * 0.12
+		position.y = base_y + sin(t * 4.0) * 4.0
 		queue_redraw()
 	func _on_body(body: Node) -> void:
 		if body.is_in_group("player") and body.alive and not consumed:
@@ -26,36 +27,27 @@ class Coin:
 			collected.emit(global_position)
 			queue_free()
 	func _draw() -> void:
-		draw_set_transform(Vector2.ZERO, sin(t * 3.0) * 0.12)
-		draw_texture_rect(TEXTURE, Rect2(-24, -24, 48, 48), false)
+		var pulse := 1.0 + sin(t * 5.0) * 0.08
+		draw_circle(Vector2.ZERO, 14.0 * pulse, Color(0.86, 0.62, 0.2, 0.16))
+		draw_circle(Vector2.ZERO, 9.0 * pulse, Color("#e0b13e"))
+		draw_arc(Vector2.ZERO, 9.0 * pulse, 0, TAU, 24, Color("#fff0b0"), 2.0, true)
+		draw_line(Vector2(0, -5), Vector2(0, 5), Color("#8d6112"), 2.0, true)
 
 class Walker:
 	extends CharacterBody2D
-	const TEXTURE = preload("res://assets/template/cat/robot.webp")
-	const SPRITE_GROUNDING = preload("res://scripts/sprite_grounding.gd")
-	var sprite_grounding := SPRITE_GROUNDING.new()
 	const HITBOX_SIZE := Vector2(52, 26)
 	const HITBOX_OFFSET := Vector2(0, 6)
-	const SPRITE_SIZE := 60.0
-	var sprite_texture: Texture2D = TEXTURE:
-		set(value):
-			sprite_texture = value
-			_update_sprite_region()
-			queue_redraw()
-	var sprite_region := Rect2()
-	var visual_scale := Vector2.ONE:
-		set(value):
-			visual_scale = value
-			queue_redraw()
 	var alive := true
 	var t := 0.0
 	var direction := -1.0
 	var floor_probe: RayCast2D
+	var visual_scale := Vector2.ONE:
+		set(value):
+			visual_scale = value
+			queue_redraw()
 	func _ready() -> void:
 		add_to_group("enemy")
-		_update_sprite_region()
 		collision_layer = 4
-		# The player owns contact damage and stomps; never judge its post-bounce velocity here.
 		collision_mask = 1
 		var shape := CollisionShape2D.new()
 		var rect := RectangleShape2D.new()
@@ -98,30 +90,22 @@ class Walker:
 		collision_layer = 0
 		collision_mask = 0
 		var tween := create_tween()
-		# Squash artwork about its feet; scaling the body origin would lift it.
-		tween.tween_property(self, "visual_scale", Vector2(1.25, 0.2), 0.12)
+		tween.tween_property(self, "visual_scale", Vector2(1.3, 0.18), 0.12)
 		tween.tween_interval(0.18)
 		tween.tween_callback(queue_free)
 	func _draw() -> void:
-		if sprite_texture != null and sprite_region.has_area():
-			var canvas: Rect2 = sprite_grounding.canvas_rect(sprite_texture, sprite_pixel_scale(), HITBOX_OFFSET.y + HITBOX_SIZE.y * 0.5)
-			draw_texture_rect(sprite_texture, canvas, false)
-	func sprite_pixel_scale() -> Vector2:
-		if sprite_texture == null:
-			return Vector2.ONE
-		var canvas_size := sprite_texture.get_size()
-		var canvas_scale := SPRITE_SIZE / maxf(canvas_size.x, canvas_size.y)
-		return Vector2.ONE * canvas_scale * visual_scale * Vector2(1.0, 1.0 + sin(t * 12.0) * 0.025 if alive else 1.0)
-	func sprite_draw_rect() -> Rect2:
-		return sprite_grounding.visible_rect(sprite_texture, sprite_pixel_scale(), HITBOX_OFFSET.y + HITBOX_SIZE.y * 0.5)
-	func _update_sprite_region() -> void:
-		sprite_region = sprite_grounding.alpha_region(sprite_texture)
+		draw_set_transform(Vector2(0, sin(t * 8.0) * 1.5), 0.0, visual_scale)
+		var body := PackedVector2Array([Vector2(-22, 8), Vector2(-16, -8), Vector2(0, -16), Vector2(16, -8), Vector2(22, 8), Vector2(0, 15)])
+		draw_colored_polygon(body, Color("#120d20"))
+		draw_polyline(PackedVector2Array([Vector2(-22, 8), Vector2(-16, -8), Vector2(0, -16), Vector2(16, -8), Vector2(22, 8)]), Color("#ff3b3b"), 2.5, true)
+		draw_line(Vector2(-7, -2), Vector2(7, -2), Color("#ff7b53"), 3.0, true)
+		draw_circle(Vector2(0, -2), 2.2, Color("#fff0b0"))
+		for x in [-15.0, 0.0, 15.0]:
+			draw_line(Vector2(x, 9), Vector2(x + (4.0 if x >= 0 else -4.0), 16), Color("#e0b13e"), 2.0, true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 class QuestionBlock:
 	extends StaticBody2D
-	const TEXTURE = preload("res://assets/template/cat/felt-special-block.webp")
-	const SURFACE_FINISH = preload("res://scripts/surface_finish.gd")
-	const EDGE_RADIUS := 8.0
 	signal activated(position: Vector2)
 	var active := true
 	var bump_offset := 0.0:
@@ -144,19 +128,28 @@ class QuestionBlock:
 		active = false
 		activated.emit(global_position - Vector2(0, 54))
 		var tween := create_tween()
-		# Keep the StaticBody2D stationary: its return stroke must not squeeze
-		# a player between the block and the supporting platform.
 		tween.tween_property(self, "bump_offset", -10.0, 0.08)
 		tween.tween_property(self, "bump_offset", 0.0, 0.1)
 		queue_redraw()
 	func _draw() -> void:
 		draw_set_transform(Vector2(0, bump_offset))
-		var tint := Color.WHITE if active else Color(0.58, 0.51, 0.45)
-		SURFACE_FINISH.draw_texture(self, TEXTURE, Rect2(-26, -26, 52, 52), EDGE_RADIUS, tint)
+		var fill := Color("#211736") if active else Color("#171126")
+		draw_style_box(_box(fill, Color("#d4af37")), Rect2(-26, -26, 52, 52))
+		draw_line(Vector2(-9, 0), Vector2(9, 0), Color("#fff0b0"), 3.0, true)
+		draw_line(Vector2(0, -9), Vector2(0, 9), Color("#fff0b0"), 3.0, true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	func _box(fill: Color, edge: Color) -> StyleBoxFlat:
+		var box := StyleBoxFlat.new()
+		box.bg_color = fill
+		box.border_color = edge
+		box.set_border_width_all(2)
+		box.set_corner_radius_all(8)
+		return box
 
 class GoalFlag:
 	extends Area2D
 	signal reached
+	var t := 0.0
 	func _ready() -> void:
 		collision_layer = 0
 		collision_mask = 2
@@ -168,12 +161,16 @@ class GoalFlag:
 		add_child(shape)
 		body_entered.connect(_on_body)
 		queue_redraw()
+	func _process(delta: float) -> void:
+		t += delta
+		queue_redraw()
 	func _on_body(body: Node) -> void:
 		if body.is_in_group("player") and body.alive:
 			reached.emit()
 	func _draw() -> void:
-		draw_rect(Rect2(-5, -290, 10, 310), Color("#f4efe2"), true)
-		draw_circle(Vector2(0, -294), 12, Color("#ffd84d"))
-		var flag := PackedVector2Array([Vector2(5, -270), Vector2(80, -245), Vector2(5, -215)])
-		draw_colored_polygon(flag, Color("#ef4d37"))
-		draw_polyline(flag, Color("#8f2b28"), 4)
+		draw_line(Vector2(0, 0), Vector2(0, -290), Color("#fff0b0"), 5.0, true)
+		draw_circle(Vector2(0, -294), 10, Color("#e0b13e"))
+		var wave := sin(t * 4.0) * 4.0
+		var flag := PackedVector2Array([Vector2(4, -270), Vector2(76, -250 + wave), Vector2(4, -216)])
+		draw_colored_polygon(flag, Color("#d4af37"))
+		draw_polyline(flag, Color("#fff0b0"), 2.0, true)

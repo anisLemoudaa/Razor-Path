@@ -10,14 +10,14 @@ const PAUSE_MENU = preload("res://scripts/pause_menu.gd")
 const TOUCH_INPUT = preload("res://scripts/touch_input.gd")
 const VISUAL_EFFECTS = preload("res://scripts/visual_effects.gd")
 const BRICK_SURFACE = preload("res://scripts/brick_surface.gd")
-const CAT_TREE_TEXTURE = preload("res://assets/template/cat/cat-tree.webp")
+const OBELISK = preload("res://scripts/obelisk.gd")
 const QUESTION_BLOCK_CLEARANCE := 80.0
 const STAGE_CATALOG = preload("res://scripts/stage_catalog.gd")
 const RUN_SCORE = preload("res://scripts/run_score.gd")
 const TUTORIAL = preload("res://scripts/tutorial_director.gd")
 const MENU_STYLE = preload("res://scripts/menu_style.gd")
 const MENU_MODAL = preload("res://scripts/menu_modal.gd")
-const FISH_ICON = preload("res://assets/template/cat/fish.webp")
+const COIN_GLYPH = preload("res://scripts/coin_glyph.gd")
 
 const WORLD_WIDTH := 7800.0
 const GROUND_Y := 620.0
@@ -54,6 +54,9 @@ var touch_input: Node
 var pause_menu = null
 var pause_button: Button
 var attack_button: Button
+var left_button: Button
+var right_button: Button
+var jump_button: Button
 var visual_effects = null
 var score_caption: Label
 var _time_icon: Control
@@ -179,10 +182,9 @@ func add_pipe(pos: Vector2, size: Vector2) -> void:
 	rect.size = size
 	shape.shape = rect
 	body.add_child(shape)
-	var tree := Sprite2D.new()
-	tree.texture = CAT_TREE_TEXTURE
-	tree.scale = size / CAT_TREE_TEXTURE.get_size()
-	body.add_child(tree)
+	var obelisk := OBELISK.new()
+	obelisk.size = size
+	body.add_child(obelisk)
 	_stage_child(body)
 
 func spawn_player(pos: Vector2) -> void:
@@ -230,16 +232,16 @@ func _hud_chip(name: String) -> PanelContainer:
 	var chip := PanelContainer.new()
 	chip.name = name
 	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := MENU_STYLE.plate(Color(1.0, 0.953, 0.86, 0.96), 0)
+	var style := MENU_STYLE.plate(Color(0.07, 0.045, 0.13, 0.94), 0)
 	style.set_corner_radius_all(18)
-	style.border_color = Color("#c8905f")
+	style.border_color = Color("#d4af37")
 	style.set_border_width_all(2)
 	style.border_width_bottom = 4
 	style.content_margin_left = 14
 	style.content_margin_right = 16
 	style.content_margin_top = 5
 	style.content_margin_bottom = 6
-	style.shadow_color = Color(0.26, 0.12, 0.05, 0.26)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.42)
 	style.shadow_size = 7
 	style.shadow_offset = Vector2(0, 4)
 	chip.add_theme_stylebox_override("panel", style)
@@ -344,13 +346,9 @@ func build_hud() -> void:
 			_time_icon = _hud_icon("clock")
 			inner.add_child(_time_icon)
 		if pair[0] == "FishChip":
-			var icon := TextureRect.new()
-			icon.name = "FishIcon"
-			icon.texture = FISH_ICON
-			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			var icon := COIN_GLYPH.new()
+			icon.name = "CoinIcon"
 			icon.custom_minimum_size = Vector2(34, 34)
-			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			inner.add_child(icon)
 		inner.add_child(pair[1])
 		row.add_child(chip)
@@ -420,6 +418,27 @@ func build_hud() -> void:
 	attack_button.add_theme_constant_override("line_spacing", -2)
 	attack_button.pressed.connect(_request_touch_attack)
 	hud_root.add_child(attack_button)
+	left_button = _make_touch_button("◀", "move_left")
+	left_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	left_button.offset_left = 22
+	left_button.offset_top = -92
+	left_button.offset_right = 94
+	left_button.offset_bottom = -20
+	hud_root.add_child(left_button)
+	right_button = _make_touch_button("▶", "move_right")
+	right_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	right_button.offset_left = 102
+	right_button.offset_top = -92
+	right_button.offset_right = 174
+	right_button.offset_bottom = -20
+	hud_root.add_child(right_button)
+	jump_button = _make_touch_button("▲", "jump")
+	jump_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	jump_button.offset_left = -104
+	jump_button.offset_top = -96
+	jump_button.offset_right = -20
+	jump_button.offset_bottom = -12
+	hud_root.add_child(jump_button)
 	get_viewport().size_changed.connect(_layout_hud)
 	_layout_hud()
 	_fade_in()
@@ -446,6 +465,19 @@ func _style_round_button(button: Button, color: Color, edge: Color, ink: Color) 
 	for key in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
 		button.add_theme_color_override(key, ink)
 
+func _make_touch_button(label: String, action: StringName) -> Button:
+	var button := Button.new()
+	button.text = label
+	button.custom_minimum_size = Vector2(72, 72)
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_override("font", MENU_STYLE.BOLD)
+	button.add_theme_font_size_override("font_size", 28)
+	_style_round_button(button, Color(0.07, 0.045, 0.13, 0.82), Color("#d4af37"), Color("#fff0b0"))
+	button.button_down.connect(func(): Input.action_press(action))
+	button.button_up.connect(func(): Input.action_release(action))
+	button.mouse_exited.connect(func(): Input.action_release(action))
+	return button
+
 
 func _layout_hud() -> void:
 	if not is_instance_valid(hud_root): return
@@ -463,7 +495,7 @@ func _layout_hud() -> void:
 		chip_style.content_margin_right = 10 if compact else 16
 		chip_style.content_margin_top = 2 if compact else 5
 		chip_style.content_margin_bottom = 3 if compact else 6
-	top.get_node("HudContent/Stats/FishChip").get_child(0).get_node("FishIcon").visible = size.x >= 520
+	top.get_node("HudContent/Stats/FishChip").get_child(0).get_node("CoinIcon").visible = size.x >= 520
 	top.get_node("HudContent/Stats/ScoreChip").get_child(0).get_node("StarIcon").visible = size.x >= 520
 	_time_icon.visible = size.x >= 520
 	score_caption.visible = size.y >= 240 and size.x >= 400
@@ -481,6 +513,12 @@ func _fit_hud_height() -> void:
 func _sync_touch_controls() -> void:
 	var active := is_inside_tree() and not get_tree().paused and not finished and not resetting
 	if is_instance_valid(attack_button): attack_button.visible = active
+	for button in [left_button, right_button, jump_button]:
+		if is_instance_valid(button): button.visible = active
+	if not active:
+		Input.action_release("move_left")
+		Input.action_release("move_right")
+		Input.action_release("jump")
 	if is_instance_valid(touch_input):
 		touch_input.set_process_unhandled_input(active)
 		if not active: touch_input.clear_input()
@@ -769,13 +807,10 @@ func show_message(title: String, subtitle: String) -> void:
 		var haul := HBoxContainer.new()
 		haul.add_theme_constant_override("separation", 2)
 		line.add_child(haul)
-		var fish := TextureRect.new()
-		fish.texture = FISH_ICON
-		fish.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		fish.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		fish.custom_minimum_size = Vector2(40, 40)
-		fish.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		haul.add_child(fish)
+		var coin_glyph := COIN_GLYPH.new()
+		coin_glyph.custom_minimum_size = Vector2(40, 40)
+		coin_glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		haul.add_child(coin_glyph)
 		var count := MENU_STYLE.label(I18n.t("result.fish", {"count": "%02d" % coins}), 26)
 		count.add_theme_font_override("font", MENU_STYLE.trimmed(MENU_STYLE.SMALL_HEADING, 26, 0.24, 0.3))
 		count.add_theme_color_override("font_color", MENU_STYLE.COCOA)

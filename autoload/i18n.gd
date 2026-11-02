@@ -2,9 +2,9 @@ extends Node
 
 signal locale_changed(locale: String)
 
-const SUPPORTED_LOCALES := ["en", "zh-CN"]
+const SUPPORTED_LOCALES := ["ar", "en", "zh-CN"]
 const PREFERENCE_PATH := "user://language.cfg"
-var _locale := "en"
+var _locale := "ar"
 var _catalogs: Dictionary = {}
 
 
@@ -48,7 +48,7 @@ func _system_locale() -> String:
 
 ## Any Chinese system locale (zh, zh_CN, zh-TW, zh_Hans…) maps to Simplified Chinese; all else to English.
 static func locale_for_system(system_locale: String) -> String:
-	return "zh-CN" if system_locale.strip_edges().to_lower().begins_with("zh") else "en"
+	return "zh-CN" if system_locale.strip_edges().to_lower().begins_with("zh") else "ar"
 
 
 func get_locale() -> String:

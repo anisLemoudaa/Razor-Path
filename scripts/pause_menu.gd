@@ -31,7 +31,7 @@ func _build_ui() -> void:
 	overlay = ColorRect.new()
 	overlay.name = "PauseOverlay"
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.color = Color(0.16, 0.08, 0.04, 1.0)
+	overlay.color = Color(0.03, 0.02, 0.06, 1.0)
 	overlay.material = FeltKit.veil_material(0.48)
 	add_child(overlay)
 	var center := CenterContainer.new()
@@ -41,7 +41,7 @@ func _build_ui() -> void:
 	panel = PanelContainer.new()
 	panel.name = "PausePanel"
 	panel.custom_minimum_size = Vector2(460, 0)
-	STYLE.felt_card(panel, Color(1.0, 0.955, 0.86, 0.98), 24)
+	STYLE.felt_card(panel, Color("#120c20"), 24)
 	center.add_child(panel)
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED

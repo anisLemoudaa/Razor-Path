@@ -10,8 +10,7 @@ config_version=5
 
 [application]
 
-boot_splash/image="res://assets/template/ui/loading-background.png"
-boot_splash/show_image=true
+boot_splash/show_image=false
 boot_splash/fullsize=true
 boot_splash/use_filter=true
 boot_splash/bg_color=Color(0.14118, 0.11765, 0.15686, 1)
@@ -19,7 +18,7 @@ boot_splash/bg_color=Color(0.14118, 0.11765, 0.15686, 1)
 
 
 
-config/name="Yarn Platformer"
+config/name="Ashen Gauntlet"
 run/main_scene="res://scenes/title_screen.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
@@ -118,3 +117,6 @@ skip_tutorial={
 textures/canvas_textures/default_texture_filter=0
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+
+[editor]
+import/use_multiple_threads=false
