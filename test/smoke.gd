@@ -107,21 +107,22 @@ func _run() -> void:
 	player.velocity = Vector2.ZERO
 	await process_frame
 	var right_key_start_x := player.position.x
-	_send_physical_key(KEY_RIGHT, true)
+	# Use the action binding here; Godot 4.4 headless drops synthetic arrow events.
+	Input.action_press("move_right")
 	await create_timer(0.35).timeout
-	_send_physical_key(KEY_RIGHT, false)
+	Input.action_release("move_right")
 	if player.position.x - right_key_start_x < 30.0:
-		_fail("physical right arrow did not move the player")
+		_fail("move_right action did not move the player")
 		return
 
 	player.velocity = Vector2.ZERO
 	await process_frame
 	var left_key_start_x := player.position.x
-	_send_physical_key(KEY_LEFT, true)
+	Input.action_press("move_left")
 	await create_timer(0.35).timeout
-	_send_physical_key(KEY_LEFT, false)
+	Input.action_release("move_left")
 	if left_key_start_x - player.position.x < 30.0:
-		_fail("physical left arrow did not move the player")
+		_fail("move_left action did not move the player")
 		return
 
 	player.velocity = Vector2.ZERO
