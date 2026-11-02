@@ -28,6 +28,12 @@ jobs:
         continue-on-error: true
         run: godot --headless --path . -s test/smoke.gd
 
+      - name: Install Web export templates
+        run: |
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          wget -q "https://downloads.tuxfamily.org/godotengine/4.4.1/Godot_v4.4.1-stable_export_templates.tpz" -O /tmp/godot-templates.tpz
+          unzip -jo /tmp/godot-templates.tpz 'templates/web_nothreads_debug.zip' 'templates/web_nothreads_release.zip' -d "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+
       - name: Export Web build
         run: mkdir -p build && godot --headless --path . --export-release Web build/index.html
 
