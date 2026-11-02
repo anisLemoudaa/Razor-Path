@@ -31,6 +31,9 @@ jobs:
           echo "$JAVA_HOME/bin" >> "$GITHUB_PATH"
           java -version
           keytool -help >/dev/null
+          command -v sdkmanager
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Configure Godot Android editor settings
         shell: bash
