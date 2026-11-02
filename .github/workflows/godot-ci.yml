@@ -32,14 +32,24 @@ jobs:
         run: |
           mkdir -p "$HOME/.local/share/godot/export_templates/4.4.1.stable"
           wget -q "https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz" -O /tmp/godot-templates.tpz
-          unzip -jo /tmp/godot-templates.tpz 'templates/web_nothreads_debug.zip' 'templates/web_nothreads_release.zip' -d "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          unzip -jo /tmp/godot-templates.tpz 'templates/web_nothreads_debug.zip' 'templates/web_nothreads_release.zip' 'templates/android_debug.apk' 'templates/android_release.apk' -d "$HOME/.local/share/godot/export_templates/4.4.1.stable"
 
       - name: Export Web build
         run: mkdir -p build && godot --headless --path . --export-release Web build/index.html
+
+      - name: Export Android APK
+        run: mkdir -p build && godot --headless --path . --export-debug Android build/AshenGauntlet.apk
 
       - name: Upload Web artifact
         uses: actions/upload-artifact@v4
         with:
           name: ashen-gauntlet-web
           path: build/
+          if-no-files-found: error
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ashen-gauntlet-apk
+          path: build/AshenGauntlet.apk
           if-no-files-found: error
