@@ -1,6 +1,7 @@
 node_modules/
 .godot/
 dist/
+build/
 test-output/
 game-captures/
 *.log
