@@ -26,6 +26,8 @@ test('Android export includes both native ABIs and verifies the signed debug pac
   }
   assert.match(workflow, /platform=android target=template_debug arch=arm32/)
   assert.match(workflow, /platform=android target=template_debug arch=arm64/)
+  assert.match(workflow, /python3 -m pip install --user 'SCons==4\.8\.1'/)
+  assert.match(workflow, /set \+o pipefail\s+yes \| sdkmanager --licenses >\/dev\/null\s+set -o pipefail/)
   assert.match(workflow, /apksigner"\s+verify --verbose/)
   assert.match(workflow, /actions\/upload-artifact@v4/)
 })

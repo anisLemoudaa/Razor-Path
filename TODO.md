@@ -22,11 +22,11 @@
 - [x] بناء Linux GDExtension محليًا على Godot 4.4.1؛ استيراد المشروع وتشغيل native smoke بنجاح، وتشغيل اختبارات Node النشطة 5/5 وwrapper `scripts/check.mjs`.
 - [x] التقاط ومراجعة الشاشة الرئيسية والمرحلتين 1 و16 بواسطة Xvfb؛ النص العربي واضح واللوحتان الدافئة والأحادية اللون مقروءتان.
 - [x] ضبط CI لإصدار Godot 4.4.1 وNDK 23.2.8568313 وبناء Linux/Android، وإعداد APK debug موقّع وفحص مكتبات arm32 وarm64 ورفع artifact.
-- [x] دفع التطبيق إلى `main` بالالتزام `da64fde3f9b6e448496634e4ce80d3c85f0ccf46`.
-- [ ] التحقق من تشغيل CI بعد إصلاح تثبيت SCons ثم مشاركة رابط Actions وartifact APK؛ التشغيل الأول [41557440927](https://github.com/anisLemoudaa/Razor-Path/actions/runs/41557440927) توقف قبل البناء لأن pip 22.0.2 لا يدعم `--break-system-packages`، واستُبدل الآن بتثبيت user-site.
+- [x] دفع التطبيق إلى `main` ثم دفع إصلاح CI بالالتزام الحالي `5e9135174bf9e0b6650f43ea390ee217856964f1`.
+- [ ] إكمال تشغيل CI ومشاركة رابط Actions وartifact APK؛ التشغيل الأول [41557440927](https://github.com/anisLemoudaa/Razor-Path/actions/runs/41557440927) توقف لأن pip 22.0.2 لا يدعم `--break-system-packages`، والثاني [41557754216](https://github.com/anisLemoudaa/Razor-Path/actions/runs/41557754216) قبل تثبيت SCons لكنه كشف SIGPIPE من `yes | sdkmanager --licenses` تحت `pipefail`. أُضيف استثناء محدود لهذا الأنبوب، ويتطلب الإصلاح تشغيلًا أخضر.
 - [ ] تجربة تثبيت وتشغيل APK على هاتف Android فعلي (ليست متاحة ضمن هذه البيئة، ولا يُدّعى إتمامها).
 
 ## الحواجز
 - **الأصول:** لا يوجد حاجز أصل ناقص؛ الصور الثلاث المرفقة والخطوط متاحة ومحفوظة، والإطارات الثمانية مستخرجة.
-- **أدوات Android محليًا:** لا يوجد Android SDK/NDK في Sandbox. عدّلت workflow ليتوافق مع pip المثبت في حاوية Ubuntu، وتنتظر الآن إعادة تشغيل ناجحة؛ حتى ذلك الوقت لا يوجد APK أو رابط تنزيل صالح.
+- **أدوات Android محليًا:** لا يوجد Android SDK/NDK في Sandbox. عولج فشلا تهيئة runner في workflow، لكن البناء والتصدير لم يبدآ بعد؛ حتى نجاح التشغيل التالي لا يوجد APK أو رابط تنزيل صالح.
 - **الجهاز الفعلي:** لا يوجد هاتف Android متصل للاختبار اليدوي.
