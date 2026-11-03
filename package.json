@@ -5,9 +5,9 @@
   "scripts": {
     "android:export-debug": "mkdir -p build/android && ${GODOT:-godot} --headless --path . --export-debug Android build/android/RazorPath-debug.apk",
     "check": "pnpm test",
-    "test": "${GODOT:-godot} --headless --audio-driver Dummy --path . --script test/native_extension_smoke.gd",
-    "test:preview": "${GODOT:-godot} --path . --script test/native_preview_capture.gd",
-    "test:checks": "node --test test/godot-check.test.mjs test/exported-pack-profile.test.mjs",
+    "test": "tmp=$(mktemp -d); XDG_DATA_HOME=\"$tmp\" ${GODOT:-godot} --headless --audio-driver Dummy --path . --script test/native_extension_smoke.gd; status=$?; rm -rf \"$tmp\"; exit $status",
+    "test:preview": "tmp=$(mktemp -d); XDG_DATA_HOME=\"$tmp\" ${GODOT:-godot} --audio-driver Dummy --path . --script test/native_preview_capture.gd; status=$?; rm -rf \"$tmp\"; exit $status",
+    "test:checks": "node --test test/godot-check.test.mjs test/exported-pack-profile.test.mjs test/razor-gen.test.mjs",
     "dev": "node scripts/manus/runtime-command.cjs ./server.mjs",
     "build": "node scripts/manus/runtime-command.cjs ./build.mjs",
     "preview:build": "node scripts/manus/runtime-command.cjs ./preview-build.mjs",

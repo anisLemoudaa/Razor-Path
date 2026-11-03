@@ -32,12 +32,30 @@ func _run() -> void:
 	assert(game.test_screen() == 0, "new game should open on the main menu")
 	assert(not game.test_stage_is_monochrome(), "stage 1 should use the warm palette")
 	assert(is_equal_approx(game.test_stage_world_width(), 3900.0), "stage 1 should load its JSON width")
+	for stage_number in range(1, 251):
+		assert(game.test_stage_loadable(stage_number), "stage %d should load with geometry, stars, checkpoint and exit" % stage_number)
 
 	game.test_set_unlocked_stage(1)
 	assert(not game.test_try_start_stage(2), "stage 2 must stay locked before stage 1 is cleared")
 	assert(game.test_try_start_stage(1), "stage 1 should start")
 	assert(game.test_screen() == 2, "stage 1 should enter gameplay")
 	assert(game.test_stage() == 1, "new run should begin at stage 1")
+	assert(game.test_stage_star_count() == 3, "each loaded stage should expose three stars")
+
+	var purchase_candidate := -1
+	for skin_index in range(1, 9):
+		if not game.test_skin_owned(skin_index):
+			purchase_candidate = skin_index
+			break
+	if purchase_candidate >= 0:
+		game.test_set_coins(1000)
+		assert(game.test_purchase_skin(purchase_candidate), "an unowned skin should be purchasable with enough coins")
+		assert(game.test_skin_owned(purchase_candidate), "successful purchase should persist ownership")
+		assert(not game.test_purchase_skin(purchase_candidate), "a duplicate skin purchase must not charge twice")
+	var future_claim := int(Time.get_unix_time_from_system()) + 200 * 365 * 24 * 60 * 60
+	assert(game.test_claim_daily_gift_at(future_claim), "daily gift should be claimable when ready")
+	assert(not game.test_claim_daily_gift_at(future_claim), "daily gift must reject a duplicate claim")
+	assert(game.test_claim_daily_gift_at(future_claim + 24 * 60 * 60), "daily gift should reset after 24 hours")
 
 	assert(game.test_register_touch(11, 2), "register run finger")
 	assert(game.test_register_touch(22, 3), "register jump finger")
@@ -72,6 +90,13 @@ func _run() -> void:
 	assert(game.start_test_stage(16), "stage 16 should load for the native acceptance check")
 	assert(game.test_stage_is_monochrome(), "stage 16 should use the monochrome palette")
 	assert(is_equal_approx(game.test_stage_world_width(), 3550.0), "stage 16 should load its JSON width")
+	assert(game.start_test_stage(250), "stage 250 should load for the native acceptance check")
+	assert(game.test_stage() == 250, "the final generated stage should retain its index")
+	assert(is_equal_approx(game.test_stage_world_width(), 615.8 * 64.0), "stage 250 should load its generated JSON world width")
+	assert(game.test_stage_star_count() == 3, "the final stage should expose all three stars")
+	game.test_complete_current_stage()
+	assert(game.test_screen() == 7, "clearing stage 250 should produce the campaign victory screen")
+	assert(game.test_unlocked_stage() == 250, "campaign progress should cap at stage 250")
 
 	game.queue_free()
 	if had_save:

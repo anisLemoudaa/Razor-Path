@@ -1,5 +1,6 @@
 #include "razor_path_game.hpp"
 
+#include <godot_cpp/classes/audio_server.hpp>
 #include <godot_cpp/classes/button.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/config_file.hpp>
@@ -13,8 +14,10 @@
 #include <godot_cpp/classes/input_event_screen_touch.hpp>
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/label.hpp>
+#include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/style_box_flat.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
@@ -25,9 +28,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace godot {
 namespace {
+
+constexpr double kHeroAnimationFps = 30.0;
 
 String ui(const char *text) {
     return String::utf8(text);
@@ -46,6 +52,27 @@ Vector2 point_from_array(const Array &values, const Vector2 &fallback) {
         return fallback;
     }
     return Vector2(static_cast<double>(values[0]), static_cast<double>(values[1]));
+}
+
+double motion_position(double from, double to, double speed, double time) {
+    const double distance = std::abs(to - from);
+    if (distance < 0.0001 || speed <= 0.0001) {
+        return from;
+    }
+    const double travel_time = distance / speed;
+    const double period = travel_time * 2.0 + 0.8;
+    const double phase = std::fmod(std::max(0.0, time), period);
+    const double direction = to >= from ? 1.0 : -1.0;
+    if (phase < travel_time) {
+        return from + direction * speed * phase;
+    }
+    if (phase < travel_time + 0.4) {
+        return to;
+    }
+    if (phase < travel_time * 2.0 + 0.4) {
+        return to - direction * speed * (phase - travel_time - 0.4);
+    }
+    return from;
 }
 
 } // namespace
@@ -74,13 +101,24 @@ void RazorPathGame::_bind_methods() {
     ClassDB::bind_method(D_METHOD("test_open_shop"), &RazorPathGame::test_open_shop);
     ClassDB::bind_method(D_METHOD("test_open_settings"), &RazorPathGame::test_open_settings);
     ClassDB::bind_method(D_METHOD("test_back"), &RazorPathGame::test_back);
+    ClassDB::bind_method(D_METHOD("test_stage_loadable", "requested_index"), &RazorPathGame::test_stage_loadable);
+    ClassDB::bind_method(D_METHOD("test_stage_star_count"), &RazorPathGame::test_stage_star_count);
+    ClassDB::bind_method(D_METHOD("test_set_coins", "value"), &RazorPathGame::test_set_coins);
+    ClassDB::bind_method(D_METHOD("test_purchase_skin", "skin_index"), &RazorPathGame::test_purchase_skin);
+    ClassDB::bind_method(D_METHOD("test_claim_daily_gift_at", "now_utc"), &RazorPathGame::test_claim_daily_gift_at);
+    ClassDB::bind_method(D_METHOD("test_skin_owned", "skin_index"), &RazorPathGame::test_skin_owned);
     ClassDB::bind_method(D_METHOD("_on_ui_action", "action"), &RazorPathGame::_on_ui_action);
 }
 
 void RazorPathGame::_ready() {
     load_assets();
     load_save();
+    if (AudioServer::get_singleton() != nullptr) {
+        AudioServer::get_singleton()->set_bus_mute(0, muted);
+    }
     load_authored_stages();
+    load_campaign_stages();
+    last_seen_utc = std::max(last_seen_utc, utc_now());
 
     ui_layer = memnew(CanvasLayer);
     ui_layer->set_layer(8);
@@ -148,26 +186,223 @@ void RazorPathGame::load_save() {
         unlocked_stage = static_cast<int32_t>(config->get_value("progress", "unlocked_stage", 1));
         coins = static_cast<int32_t>(config->get_value("progress", "coins", 0));
         selected_skin = static_cast<int32_t>(config->get_value("appearance", "skin", 0));
+        selected_effect = static_cast<int32_t>(config->get_value("effects", "equipped", 0));
         muted = static_cast<bool>(config->get_value("settings", "muted", false));
         reduced_motion = static_cast<bool>(config->get_value("settings", "reduced_motion", false));
+        large_text = static_cast<bool>(config->get_value("settings", "large_text", false));
+
+        const Dictionary saved_levels = config->get_value("progress", "level_progress", Dictionary());
+        const Array level_keys = saved_levels.keys();
+        for (int32_t i = 0; i < level_keys.size(); ++i) {
+            const String key = level_keys[i];
+            const int32_t index = static_cast<int32_t>(key.to_int());
+            const Dictionary record = saved_levels[key];
+            if (index < 1 || index > 250) {
+                continue;
+            }
+            RazorLevelProgress progress;
+            progress.completed = static_cast<bool>(record.get("completed", false));
+            progress.star_mask = static_cast<uint8_t>(std::clamp(static_cast<int32_t>(record.get("star_mask", 0)), 0, 7));
+            progress.best_time = std::max(0.0, static_cast<double>(record.get("best_time", 0.0)));
+            level_progress[index] = progress;
+        }
+
+        const Array saved_skins = config->get_value("appearance", "owned_skins", Array());
+        for (int32_t i = 0; i < saved_skins.size(); ++i) {
+            const int32_t skin = static_cast<int32_t>(saved_skins[i]);
+            if (skin >= 0 && skin < static_cast<int32_t>(owned_skins.size())) {
+                owned_skins[skin] = true;
+            }
+        }
+        const Array saved_chests = config->get_value("progress", "claimed_group_chests", Array());
+        for (int32_t i = 0; i < saved_chests.size(); ++i) {
+            const int32_t group = static_cast<int32_t>(saved_chests[i]);
+            if (group >= 1 && group <= static_cast<int32_t>(claimed_group_chests.size())) {
+                claimed_group_chests[group - 1] = true;
+            }
+        }
+        const Array saved_achievements = config->get_value("progress", "claimed_achievements", Array());
+        for (int32_t i = 0; i < saved_achievements.size(); ++i) {
+            const int32_t achievement = static_cast<int32_t>(saved_achievements[i]);
+            if (achievement >= 0 && achievement < static_cast<int32_t>(claimed_achievements.size())) {
+                claimed_achievements[achievement] = true;
+            }
+        }
+        const Array saved_effects = config->get_value("effects", "owned", Array());
+        for (int32_t i = 0; i < saved_effects.size(); ++i) {
+            const int32_t effect = static_cast<int32_t>(saved_effects[i]);
+            if (effect >= 0 && effect < static_cast<int32_t>(owned_effects.size())) {
+                owned_effects[effect] = true;
+            }
+        }
+        deaths = std::max(0, static_cast<int32_t>(config->get_value("stats", "deaths", 0)));
+        coins_earned = std::max(0, static_cast<int32_t>(config->get_value("stats", "coins_earned", 0)));
+        total_jumps = std::max(0, static_cast<int32_t>(config->get_value("stats", "total_jumps", 0)));
+        play_seconds_total = std::max(0.0, static_cast<double>(config->get_value("stats", "play_seconds", 0.0)));
+        daily_last_claim = std::max<int64_t>(0, static_cast<int64_t>(config->get_value("gifts", "daily_last_claim", 0)));
+        last_seen_utc = std::max<int64_t>(0, static_cast<int64_t>(config->get_value("gifts", "last_seen_utc", 0)));
     }
-    unlocked_stage = std::clamp(unlocked_stage, 1, 16);
+    unlocked_stage = std::clamp(unlocked_stage, 1, 250);
     coins = std::max(0, coins);
-    selected_skin = std::clamp(selected_skin, 0, 2);
+    selected_skin = std::clamp(selected_skin, 0, static_cast<int32_t>(owned_skins.size()) - 1);
+    selected_effect = std::clamp(selected_effect, 0, static_cast<int32_t>(owned_effects.size()) - 1);
+    owned_skins[0] = true;
+    owned_effects[0] = true;
+    if (selected_skin > 0) {
+        // Old saves only stored the equipped skin; treat it as owned during migration.
+        owned_skins[selected_skin] = true;
+    }
 }
 
-void RazorPathGame::save_progress() {
+bool RazorPathGame::save_progress() {
     Ref<ConfigFile> config;
     config.instantiate();
     config->set_value("progress", "unlocked_stage", unlocked_stage);
     config->set_value("progress", "coins", coins);
+    Dictionary saved_levels;
+    for (const auto &entry : level_progress) {
+        Dictionary record;
+        record["completed"] = entry.second.completed;
+        record["star_mask"] = static_cast<int32_t>(entry.second.star_mask);
+        record["best_time"] = entry.second.best_time;
+        saved_levels[String::num_int64(entry.first)] = record;
+    }
+    config->set_value("progress", "level_progress", saved_levels);
+    Array saved_chests;
+    for (int32_t i = 0; i < static_cast<int32_t>(claimed_group_chests.size()); ++i) {
+        if (claimed_group_chests[i]) {
+            saved_chests.push_back(i + 1);
+        }
+    }
+    config->set_value("progress", "claimed_group_chests", saved_chests);
+    Array saved_achievements;
+    for (int32_t i = 0; i < static_cast<int32_t>(claimed_achievements.size()); ++i) {
+        if (claimed_achievements[i]) {
+            saved_achievements.push_back(i);
+        }
+    }
+    config->set_value("progress", "claimed_achievements", saved_achievements);
     config->set_value("appearance", "skin", selected_skin);
+    Array saved_skins;
+    for (int32_t i = 0; i < static_cast<int32_t>(owned_skins.size()); ++i) {
+        if (owned_skins[i]) {
+            saved_skins.push_back(i);
+        }
+    }
+    config->set_value("appearance", "owned_skins", saved_skins);
+    config->set_value("effects", "equipped", selected_effect);
+    Array saved_effects;
+    for (int32_t i = 0; i < static_cast<int32_t>(owned_effects.size()); ++i) {
+        if (owned_effects[i]) {
+            saved_effects.push_back(i);
+        }
+    }
+    config->set_value("effects", "owned", saved_effects);
     config->set_value("settings", "muted", muted);
     config->set_value("settings", "reduced_motion", reduced_motion);
+    config->set_value("settings", "large_text", large_text);
+    config->set_value("stats", "deaths", deaths);
+    config->set_value("stats", "coins_earned", coins_earned);
+    config->set_value("stats", "total_jumps", total_jumps);
+    config->set_value("stats", "play_seconds", play_seconds_total);
+    config->set_value("gifts", "daily_last_claim", daily_last_claim);
+    config->set_value("gifts", "last_seen_utc", std::max(last_seen_utc, utc_now()));
     const Error result = config->save("user://razor_path_save.cfg");
     if (result != OK) {
         UtilityFunctions::push_warning("Razor Path: could not save progress.");
+        return false;
     }
+    return true;
+}
+
+int64_t RazorPathGame::utc_now() const {
+    Time *clock = Time::get_singleton();
+    return clock == nullptr ? 0 : static_cast<int64_t>(clock->get_unix_time_from_system());
+}
+
+bool RazorPathGame::purchase_skin(int32_t skin_index) {
+    static const std::array<int32_t, 9> prices = {0, 25, 50, 600, 700, 700, 900, 1000, 950};
+    if (skin_index <= 0 || skin_index >= static_cast<int32_t>(owned_skins.size()) || owned_skins[skin_index]) {
+        return false;
+    }
+    const int32_t price = prices[skin_index];
+    if (coins < price) {
+        return false;
+    }
+    // The balance and ownership are persisted together before the UI reports success.
+    const int32_t previous_coins = coins;
+    coins -= price;
+    owned_skins[skin_index] = true;
+    if (!save_progress()) {
+        coins = previous_coins;
+        owned_skins[skin_index] = false;
+        ui_notice = ui("تعذر حفظ الشراء على الجهاز؛ لم تُخصم العملات.");
+        return false;
+    }
+    return true;
+}
+
+bool RazorPathGame::claim_daily_gift(int64_t now_utc) {
+    if (now_utc <= 0 || (daily_last_claim > 0 && (now_utc < daily_last_claim || now_utc - daily_last_claim < 86400))) {
+        return false;
+    }
+    const int64_t previous_claim = daily_last_claim;
+    const int32_t previous_coins = coins;
+    const int32_t previous_coins_earned = coins_earned;
+    daily_last_claim = now_utc;
+    coins += 100;
+    coins_earned += 100;
+    if (!save_progress()) {
+        daily_last_claim = previous_claim;
+        coins = previous_coins;
+        coins_earned = previous_coins_earned;
+        ui_notice = ui("تعذر حفظ الهدية؛ لم تُضف العملات.");
+        return false;
+    }
+    return true;
+}
+
+void RazorPathGame::check_group_chest(int32_t group_index) {
+    if (group_index < 1 || group_index > static_cast<int32_t>(claimed_group_chests.size()) || claimed_group_chests[group_index - 1]) {
+        return;
+    }
+    const int32_t first = (group_index - 1) * 10 + 1;
+    const int32_t last = std::min(250, group_index * 10);
+    for (int32_t index = first; index <= last; ++index) {
+        const auto progress = level_progress.find(index);
+        if (progress == level_progress.end() || !progress->second.completed) {
+            return;
+        }
+    }
+    claimed_group_chests[group_index - 1] = true;
+    coins += 100;
+    coins_earned += 100;
+    if (toast_label != nullptr) {
+        toast_label->set_text(ui("صندوق المجموعة: +100 عملة"));
+        toast_time = 2.5;
+    }
+}
+
+int32_t RazorPathGame::total_stars() const {
+    int32_t total = 0;
+    for (const auto &entry : level_progress) {
+        for (int32_t bit = 0; bit < 3; ++bit) {
+            if ((entry.second.star_mask & static_cast<uint8_t>(1u << bit)) != 0) {
+                ++total;
+            }
+        }
+    }
+    return total;
+}
+
+int32_t RazorPathGame::completed_stages() const {
+    int32_t total = 0;
+    for (const auto &entry : level_progress) {
+        if (entry.second.completed) {
+            ++total;
+        }
+    }
+    return total;
 }
 
 void RazorPathGame::load_authored_stages() {
@@ -191,10 +426,48 @@ void RazorPathGame::load_authored_stages() {
         }
         const Dictionary record = records[i];
         const int32_t index = static_cast<int32_t>(record.get("index", 0));
-        if (index >= 1 && index <= 16) {
+        if (index >= 1 && index <= 250) {
             authored_stages[index] = parse_stage(record);
         }
     }
+}
+
+bool RazorPathGame::load_campaign_stages() {
+    Ref<FileAccess> file = FileAccess::open("res://data/stages/razor_path_250.json", FileAccess::READ);
+    if (file.is_null()) {
+        UtilityFunctions::push_warning("Razor Path: 250-level data is missing; authored stages and fallback generation will be used.");
+        return false;
+    }
+    Ref<JSON> json;
+    json.instantiate();
+    const Error parse_error = json->parse(file->get_as_text());
+    if (parse_error != OK || json->get_data().get_type() != Variant::DICTIONARY) {
+        UtilityFunctions::push_warning("Razor Path: 250-level JSON could not be parsed.");
+        return false;
+    }
+    const Dictionary root = json->get_data();
+    const Array records = root.get("levels", Array());
+    if (records.size() != 250) {
+        UtilityFunctions::push_warning("Razor Path: expected exactly 250 generated levels.");
+        return false;
+    }
+    for (int32_t i = 0; i < records.size(); ++i) {
+        if (records[i].get_type() != Variant::DICTIONARY) {
+            continue;
+        }
+        const Dictionary record = records[i];
+        const int32_t index = static_cast<int32_t>(record.get("n", 0));
+        if (index < 1 || index > 250) {
+            continue;
+        }
+        const StageData generated = parse_campaign_stage(record);
+        if (generated.index == 1 || generated.index == 16) {
+            // Preserve the two authored levels already shipped in the project.
+            continue;
+        }
+        authored_stages[index] = generated;
+    }
+    return true;
 }
 
 RazorPathGame::StageData RazorPathGame::parse_stage(const Dictionary &record) const {
@@ -202,6 +475,7 @@ RazorPathGame::StageData RazorPathGame::parse_stage(const Dictionary &record) co
     parsed.index = static_cast<int32_t>(record.get("index", 1));
     parsed.name = record.get("name", ui("الطريق الأول"));
     parsed.world_width = static_cast<double>(record.get("world_width", 3600.0));
+    parsed.world_height = 720.0;
     parsed.required_coins = static_cast<double>(record.get("required_coins", 0));
     parsed.spawn = point_from_array(record.get("spawn", Array()), Vector2(130.0, 590.0));
     parsed.exit = point_from_array(record.get("exit", Array()), Vector2(parsed.world_width - 120.0, 590.0));
@@ -212,9 +486,13 @@ RazorPathGame::StageData RazorPathGame::parse_stage(const Dictionary &record) co
     for (int32_t i = 0; i < platforms_data.size(); ++i) {
         const Array values = platforms_data[i];
         if (values.size() >= 4) {
-            parsed.platforms.push_back(Rect2(
+            RazorPlatformData platform;
+            platform.bounds = Rect2(
                 Vector2(static_cast<double>(values[0]), static_cast<double>(values[1])),
-                Vector2(static_cast<double>(values[2]), static_cast<double>(values[3]))));
+                Vector2(static_cast<double>(values[2]), static_cast<double>(values[3])));
+            platform.motion_start = platform.bounds.position;
+            platform.motion_end = platform.bounds.position;
+            parsed.platforms.push_back(platform);
         }
     }
     const Array coins_data = record.get("coins", Array());
@@ -231,9 +509,163 @@ RazorPathGame::StageData RazorPathGame::parse_stage(const Dictionary &record) co
         }
     }
     if (parsed.platforms.empty()) {
-        parsed.platforms.emplace_back(Vector2(0.0, 620.0), Vector2(parsed.world_width, 100.0));
+        RazorPlatformData platform;
+        platform.bounds = Rect2(Vector2(0.0, 620.0), Vector2(parsed.world_width, 100.0));
+        platform.motion_start = platform.bounds.position;
+        platform.motion_end = platform.bounds.position;
+        parsed.platforms.push_back(platform);
     }
     return parsed;
+}
+
+RazorPathGame::StageData RazorPathGame::parse_campaign_stage(const Dictionary &record) const {
+    constexpr double tile = 64.0;
+    StageData parsed;
+    parsed.index = static_cast<int32_t>(record.get("n", 1));
+    parsed.name = record.get("name", ui("الممر"));
+    parsed.group = static_cast<int32_t>(record.get("group", 1));
+    const double tiles_wide = static_cast<double>(record.get("W", 240.0));
+    const double tiles_high = static_cast<double>(record.get("H", 18.0));
+    parsed.world_width = tiles_wide * tile;
+    parsed.world_height = tiles_high * tile;
+    parsed.tile_campaign = true;
+    parsed.required_coins = 0.0;
+
+    const Array surfaces = record.get("surfaces", Array());
+    double start_surface_y = 3.0;
+    double finish_surface_y = 3.0;
+    const double start_x_tiles = static_cast<double>(record.get("start", 3.0));
+    const double finish_x_tiles = static_cast<double>(record.get("finish", tiles_wide - 3.0));
+    bool found_start = false;
+    for (int32_t i = 0; i < surfaces.size(); ++i) {
+        if (surfaces[i].get_type() != Variant::DICTIONARY) {
+            continue;
+        }
+        const Dictionary surface = surfaces[i];
+        const String kind = surface.get("t", String("g"));
+        const double x = static_cast<double>(surface.get("x", 0.0));
+        const double y = static_cast<double>(surface.get("y", 3.0));
+        const double width = static_cast<double>(surface.get("w", 2.0));
+        RazorPlatformData platform;
+        const double height = kind == "b" ? 0.4 * tile : (kind == "v" ? 1.2 * tile : (y <= 4.0 ? y * tile : 1.2 * tile));
+        platform.bounds = Rect2(Vector2(x * tile, (tiles_high - y) * tile), Vector2(width * tile, height));
+        platform.bridge = kind == "b";
+        platform.ladder_top = static_cast<bool>(surface.get("lad", false));
+        platform.motion_start = platform.bounds.position;
+        platform.motion_end = platform.bounds.position;
+        if (kind == "m") {
+            platform.moving = true;
+            platform.speed = static_cast<double>(surface.get("sp", 1.0)) * tile;
+            platform.motion_start.x = x * tile;
+            platform.motion_end.x = static_cast<double>(surface.get("x1", x)) * tile;
+        } else if (kind == "v") {
+            platform.moving = true;
+            platform.vertical = true;
+            platform.speed = static_cast<double>(surface.get("sp", 1.0)) * tile;
+            platform.motion_start.y = (tiles_high - static_cast<double>(surface.get("y0", y))) * tile;
+            platform.motion_end.y = (tiles_high - static_cast<double>(surface.get("y1", y))) * tile;
+            platform.bounds.position.y = platform.motion_start.y;
+        }
+        parsed.platforms.push_back(platform);
+        if (start_x_tiles >= x && start_x_tiles <= x + width && !found_start) {
+            start_surface_y = y;
+            found_start = true;
+        }
+        if (finish_x_tiles >= x && finish_x_tiles <= x + width && !platform.moving) {
+            finish_surface_y = y;
+        }
+    }
+    parsed.spawn = Vector2(start_x_tiles * tile, (tiles_high - start_surface_y) * tile);
+    parsed.exit = Vector2(finish_x_tiles * tile, (tiles_high - finish_surface_y) * tile);
+
+    const Array spikes = record.get("spikes", Array());
+    for (int32_t i = 0; i < spikes.size(); ++i) {
+        const Array values = spikes[i];
+        if (values.size() < 3) {
+            continue;
+        }
+        const double x = static_cast<double>(values[0]) * tile;
+        const double y = (tiles_high - static_cast<double>(values[1])) * tile;
+        const double width = static_cast<double>(values[2]) * tile;
+        parsed.hazards.emplace_back(Vector2(x, y - 0.7 * tile), Vector2(width, 0.7 * tile));
+    }
+
+    const Array saws = record.get("saws", Array());
+    for (int32_t i = 0; i < saws.size(); ++i) {
+        const Array values = saws[i];
+        if (values.size() >= 4) {
+            parsed.saws.push_back(RazorSawData{
+                static_cast<double>(values[0]) * tile,
+                static_cast<double>(values[1]) * tile,
+                (tiles_high - static_cast<double>(values[2])) * tile,
+                static_cast<double>(values[3]) * tile});
+        }
+    }
+
+    const Array ceilings = record.get("ceilings", Array());
+    for (int32_t i = 0; i < ceilings.size(); ++i) {
+        const Array values = ceilings[i];
+        if (values.size() >= 3) {
+            const double bottom = (tiles_high - static_cast<double>(values[2])) * tile;
+            parsed.ceilings.emplace_back(
+                Vector2(static_cast<double>(values[0]) * tile, 0.0),
+                Vector2(static_cast<double>(values[1]) * tile, bottom));
+        }
+    }
+
+    const Array ladders = record.get("ladders", Array());
+    for (int32_t i = 0; i < ladders.size(); ++i) {
+        const Array values = ladders[i];
+        if (values.size() >= 3) {
+            parsed.ladders.push_back(RazorLadderData{
+                static_cast<double>(values[0]) * tile,
+                (tiles_high - static_cast<double>(values[2])) * tile,
+                (tiles_high - static_cast<double>(values[1])) * tile});
+        }
+    }
+
+    const Array checkpoints = record.get("checkpoints", Array());
+    for (int32_t i = 0; i < checkpoints.size(); ++i) {
+        const double x = static_cast<double>(checkpoints[i]);
+        double y = start_surface_y;
+        for (int32_t s = 0; s < surfaces.size(); ++s) {
+            if (surfaces[s].get_type() != Variant::DICTIONARY) {
+                continue;
+            }
+            const Dictionary surface = surfaces[s];
+            const String kind = surface.get("t", String("g"));
+            const double sx = static_cast<double>(surface.get("x", 0.0));
+            const double width = static_cast<double>(surface.get("w", 0.0));
+            if ((kind == "g" || kind == "b") && x >= sx && x <= sx + width) {
+                y = static_cast<double>(surface.get("y", y));
+                break;
+            }
+        }
+        parsed.checkpoints.push_back(RazorCheckpointData{Vector2(x * tile, (tiles_high - y) * tile), false});
+    }
+
+    const Array stars = record.get("stars", Array());
+    for (int32_t i = 0; i < stars.size(); ++i) {
+        const Array values = stars[i];
+        if (values.size() >= 2) {
+            parsed.stars.push_back(RazorStarData{
+                Vector2(static_cast<double>(values[0]) * tile, (tiles_high - static_cast<double>(values[1])) * tile), false});
+        }
+    }
+    return parsed;
+}
+
+Rect2 RazorPathGame::current_platform_rect(const RazorPlatformData &platform, double time) const {
+    Rect2 bounds = platform.bounds;
+    if (!platform.moving) {
+        return bounds;
+    }
+    if (platform.vertical) {
+        bounds.position.y = motion_position(platform.motion_start.y, platform.motion_end.y, platform.speed, time);
+    } else {
+        bounds.position.x = motion_position(platform.motion_start.x, platform.motion_end.x, platform.speed, time);
+    }
+    return bounds;
 }
 
 RazorPathGame::StageData RazorPathGame::make_generated_stage(int32_t requested_index) const {
@@ -245,32 +677,75 @@ RazorPathGame::StageData RazorPathGame::make_generated_stage(int32_t requested_i
     generated.spawn = Vector2(120.0, 590.0);
     generated.exit = Vector2(generated.world_width - 130.0, 590.0);
     generated.monochrome = false;
-    generated.platforms.emplace_back(Vector2(0.0, 620.0), Vector2(720.0, 100.0));
+    RazorPlatformData ground;
+    ground.bounds = Rect2(Vector2(0.0, 620.0), Vector2(720.0, 100.0));
+    generated.platforms.push_back(ground);
     for (int32_t i = 0; i < 6; ++i) {
         const double x = 560.0 + i * (generated.world_width - 900.0) / 6.0;
         const double y = 510.0 - ((i + requested_index) % 3) * 58.0;
         const double width = 260.0 + ((i + requested_index) % 2) * 55.0;
-        generated.platforms.emplace_back(Vector2(x, y), Vector2(width, 30.0));
+        RazorPlatformData platform;
+        platform.bounds = Rect2(Vector2(x, y), Vector2(width, 30.0));
+        generated.platforms.push_back(platform);
         generated.coins.emplace_back(Vector2(x + width * 0.5, y - 52.0));
         if ((i + requested_index) % 3 == 1) {
             generated.hazards.emplace_back(Vector2(x + width * 0.55, y - 36.0), Vector2(48.0, 36.0));
         }
     }
-    generated.platforms.emplace_back(Vector2(generated.world_width - 430.0, 620.0), Vector2(430.0, 100.0));
+    RazorPlatformData end_ground;
+    end_ground.bounds = Rect2(Vector2(generated.world_width - 430.0, 620.0), Vector2(430.0, 100.0));
+    generated.platforms.push_back(end_ground);
     return generated;
 }
 
 bool RazorPathGame::load_stage(int32_t requested_index) {
-    if (requested_index < 1 || requested_index > 16) {
+    if (requested_index < 1 || requested_index > 250) {
         return false;
     }
     const auto authored = authored_stages.find(requested_index);
     stage = authored != authored_stages.end() ? authored->second : make_generated_stage(requested_index);
+    if (stage.stars.empty()) {
+        for (int32_t i = 0; i < 3; ++i) {
+            Vector2 position;
+            if (!stage.coins.empty()) {
+                const size_t coin_index = static_cast<size_t>(i) * (stage.coins.size() - 1) / 2;
+                position = stage.coins[coin_index];
+            } else {
+                const RazorPlatformData &platform = stage.platforms[std::min<size_t>(i, stage.platforms.size() - 1)];
+                position = Vector2(platform.bounds.position.x + platform.bounds.size.x * 0.5, platform.bounds.position.y - 84.0);
+            }
+            stage.stars.push_back(RazorStarData{position, false});
+        }
+    }
+    if (stage.checkpoints.empty()) {
+        const double target = stage.world_width * 0.58;
+        const RazorPlatformData *chosen = nullptr;
+        double nearest = std::numeric_limits<double>::max();
+        for (const RazorPlatformData &platform : stage.platforms) {
+            if (platform.moving) {
+                continue;
+            }
+            const double distance = target < platform.bounds.position.x ? platform.bounds.position.x - target :
+                (target > platform.bounds.position.x + platform.bounds.size.x ? target - platform.bounds.position.x - platform.bounds.size.x : 0.0);
+            if (distance < nearest) {
+                nearest = distance;
+                chosen = &platform;
+            }
+        }
+        if (chosen != nullptr) {
+            const double x = std::clamp(target, chosen->bounds.position.x + 64.0,
+                chosen->bounds.position.x + std::max(64.0, chosen->bounds.size.x - 64.0));
+            stage.checkpoints.push_back(RazorCheckpointData{Vector2(x, chosen->bounds.position.y), false});
+        }
+    }
     stage_index = requested_index;
     player_x = stage.spawn.x;
     player_feet = stage.spawn.y;
     player_vy = 0.0;
     camera_x = 0.0;
+    camera_y = 0.0;
+    stage_elapsed = 0.0;
+    run_elapsed = 0.0;
     stage_coins = 0;
     remaining_time = 180.0;
     on_ground = false;
@@ -279,11 +754,20 @@ bool RazorPathGame::load_stage(int32_t requested_index) {
     attack_requested = false;
     landing_time = 0.0;
     std::fill(std::begin(stage_coin_collected), std::end(stage_coin_collected), false);
+    const auto saved = level_progress.find(requested_index);
+    for (size_t i = 0; i < stage.stars.size(); ++i) {
+        const uint8_t mask = saved == level_progress.end() ? 0 : saved->second.star_mask;
+        stage.stars[i].collected = i < 3 && (mask & static_cast<uint8_t>(1u << i)) != 0;
+    }
+    for (RazorCheckpointData &checkpoint : stage.checkpoints) {
+        checkpoint.activated = false;
+    }
+    checkpoint_x = stage.spawn.x;
+    checkpoint_feet = stage.spawn.y;
     return true;
 }
 
 void RazorPathGame::start_new_run() {
-    total_jumps = 0;
     start_stage(1);
 }
 
@@ -305,14 +789,28 @@ void RazorPathGame::complete_stage() {
         return;
     }
     run_finalized = true;
-    if (stage_index < 16) {
+    RazorLevelProgress &progress = level_progress[stage_index];
+    const bool first_completion = !progress.completed;
+    progress.completed = true;
+    if (progress.best_time <= 0.0 || run_elapsed < progress.best_time) {
+        progress.best_time = run_elapsed;
+    }
+    if (first_completion) {
+        coins += 10;
+        coins_earned += 10;
+    }
+    if (stage_index < 250) {
         unlocked_stage = std::max(unlocked_stage, stage_index + 1);
         screen = RazorScreen::STAGE_CLEAR;
     } else {
-        unlocked_stage = 16;
+        unlocked_stage = 250;
         screen = RazorScreen::VICTORY;
     }
-    save_progress();
+    check_group_chest(stage.group);
+    if (!save_progress()) {
+        ui_notice = ui("تعذر حفظ تقدم الجولة على الجهاز؛ أبقِ التطبيق مفتوحًا وحاول الحفظ مجددًا.");
+        toast_time = 3.0;
+    }
     touch_actions.clear();
     rebuild_ui();
     queue_redraw();
@@ -323,6 +821,10 @@ void RazorPathGame::fail_run() {
         return;
     }
     run_finalized = true;
+    if (!save_progress()) {
+        ui_notice = ui("تعذر حفظ التقدم على الجهاز.");
+        toast_time = 3.0;
+    }
     screen = RazorScreen::GAME_OVER;
     touch_actions.clear();
     rebuild_ui();
@@ -340,6 +842,13 @@ void RazorPathGame::spawn_particles(const Vector2 &at, const Color &color, int32
         p.position = at;
         p.velocity = Vector2(std::cos(angle) * speed, std::sin(angle) * speed - 30.0);
         p.color = color;
+        if (selected_effect == 1) {
+            p.color = rgba8(0xe3b84d);
+        } else if (selected_effect == 2) {
+            p.color = rgba8(0x63c8cf);
+        } else if (selected_effect == 3) {
+            p.color = rgba8(0x9a83b5);
+        }
         p.lifetime = 0.48 + (i % 4) * 0.07;
         p.size = 2.0 + (i % 3) * 1.2;
         particles.push_back(p);
@@ -442,6 +951,7 @@ void RazorPathGame::_process(double delta) {
     toast_time = std::max(0.0, toast_time - delta);
     if (toast_time <= 0.0 && toast_label != nullptr) {
         toast_label->set_text(String());
+        ui_notice = String();
     }
     for (Particle &particle : particles) {
         particle.position += particle.velocity * delta;
@@ -459,6 +969,9 @@ void RazorPathGame::_physics_process(double delta) {
     if (screen != RazorScreen::PLAYING) {
         return;
     }
+    stage_elapsed += delta;
+    run_elapsed += delta;
+    play_seconds_total += delta;
     remaining_time = std::max(0.0, remaining_time - delta);
     if (remaining_time <= 0.0) {
         fail_run();
@@ -468,15 +981,59 @@ void RazorPathGame::_physics_process(double delta) {
     Input *input = Input::get_singleton();
     bool left = input->is_key_pressed(Key::KEY_A) || input->is_key_pressed(Key::KEY_LEFT);
     bool right = input->is_key_pressed(Key::KEY_D) || input->is_key_pressed(Key::KEY_RIGHT);
+    const bool climb_up_key = input->is_key_pressed(Key::KEY_W) || input->is_key_pressed(Key::KEY_UP);
+    const bool climb_down_key = input->is_key_pressed(Key::KEY_S) || input->is_key_pressed(Key::KEY_DOWN);
     bool attack = attack_requested || input->is_key_pressed(Key::KEY_J) || input->is_key_pressed(Key::KEY_X);
+    bool climb_up_touch = false;
     for (const auto &entry : touch_actions) {
         left = left || entry.second == TouchAction::LEFT;
         right = right || entry.second == TouchAction::RIGHT;
+        climb_up_touch = climb_up_touch || entry.second == TouchAction::JUMP;
     }
+    const bool climb_up = climb_up_key || climb_up_touch;
+    const bool climb_down = climb_down_key;
 
     const double axis = (right ? 1.0 : 0.0) - (left ? 1.0 : 0.0);
+    if (on_ground) {
+        for (const RazorPlatformData &platform : stage.platforms) {
+            if (!platform.moving) {
+                continue;
+            }
+            const Rect2 previous = current_platform_rect(platform, std::max(0.0, stage_elapsed - delta));
+            const Rect2 current = current_platform_rect(platform, stage_elapsed);
+            if (player_x + 18.0 > previous.position.x && player_x - 18.0 < previous.position.x + previous.size.x &&
+                std::abs(player_feet - previous.position.y) < 5.0) {
+                player_x += current.position.x - previous.position.x;
+                player_feet += current.position.y - previous.position.y;
+                break;
+            }
+        }
+    }
     player_x = std::clamp(player_x + axis * 360.0 * delta, 18.0, stage.world_width - 18.0);
-    if (jump_requested && on_ground) {
+
+    bool climbing = false;
+    bool ladder_top_landed = false;
+    const Rect2 before_climb = player_body_rect();
+    for (const RazorLadderData &ladder : stage.ladders) {
+        const Rect2 ladder_rect(Vector2(ladder.x - 19.0, ladder.y0), Vector2(38.0, ladder.y1 - ladder.y0));
+        if (before_climb.intersects(ladder_rect) && (climb_up || climb_down)) {
+            player_x = ladder.x;
+            player_vy = 0.0;
+            if (climb_up) {
+                player_feet = std::max(ladder.y0 + 118.0, player_feet - 256.0 * delta);
+                climbing = player_feet > ladder.y0 + 118.0;
+                if (!climbing) {
+                    player_feet = ladder.y0;
+                    ladder_top_landed = true;
+                }
+            } else {
+                player_feet = std::min(ladder.y1, player_feet + 256.0 * delta);
+                climbing = player_feet < ladder.y1;
+            }
+            break;
+        }
+    }
+    if (jump_requested && on_ground && !climbing) {
         player_vy = -700.0;
         on_ground = false;
         total_jumps += 1;
@@ -499,33 +1056,102 @@ void RazorPathGame::_physics_process(double delta) {
     attack_requested = false;
 
     const double old_feet = player_feet;
-    player_vy += 1850.0 * delta;
-    player_feet += player_vy * delta;
-    on_ground = false;
-    for (const Rect2 &platform : stage.platforms) {
-        const bool overlaps_x = player_x + 20.0 > platform.position.x && player_x - 20.0 < platform.position.x + platform.size.x;
-        const bool crossed_top = old_feet <= platform.position.y + 4.0 && player_feet >= platform.position.y;
-        if (overlaps_x && crossed_top && player_vy >= 0.0) {
-            player_feet = platform.position.y;
-            player_vy = 0.0;
-            on_ground = true;
+    if (!climbing) {
+        player_vy += 1850.0 * delta;
+        player_feet += player_vy * delta;
+    }
+    if (player_vy < 0.0) {
+        const double old_head = old_feet - 118.0;
+        const double new_head = player_feet - 118.0;
+        for (const Rect2 &ceiling : stage.ceilings) {
+            const double underside = ceiling.position.y + ceiling.size.y;
+            const bool overlaps_x = player_x + 18.0 > ceiling.position.x && player_x - 18.0 < ceiling.position.x + ceiling.size.x;
+            if (overlaps_x && old_head >= underside && new_head < underside) {
+                player_feet = underside + 118.0;
+                player_vy = 0.0;
+                break;
+            }
         }
     }
-    if (on_ground && old_feet > player_feet + 2.0) {
+    const bool was_on_ground = on_ground;
+    on_ground = climbing || ladder_top_landed;
+    if (!climbing && !ladder_top_landed) {
+        for (const RazorPlatformData &data : stage.platforms) {
+            const Rect2 platform = current_platform_rect(data, stage_elapsed);
+            const bool overlaps_x = player_x + 18.0 > platform.position.x && player_x - 18.0 < platform.position.x + platform.size.x;
+            const bool crossed_top = old_feet <= platform.position.y + 4.0 && player_feet >= platform.position.y;
+            if (overlaps_x && crossed_top && player_vy >= 0.0) {
+                player_feet = platform.position.y;
+                player_vy = 0.0;
+                on_ground = true;
+            }
+        }
+    }
+    if (on_ground && !was_on_ground && !climbing) {
         landing_time = 0.14;
         spawn_particles(Vector2(player_x, player_feet - 2.0), stage.monochrome ? rgba8(0x444444) : rgba8(0x625c4f), 5, 55.0);
     }
 
-    const Rect2 body = player_body_rect();
+    auto respawn = [&]() {
+        ++deaths;
+        remaining_time = std::max(0.0, remaining_time - 10.0);
+        player_x = checkpoint_x;
+        player_feet = checkpoint_feet;
+        player_vy = 0.0;
+        on_ground = false;
+        stage_elapsed = 0.0;
+        camera_x = std::clamp(player_x - logical_size().x * 0.38, 0.0, std::max(0.0, stage.world_width - logical_size().x));
+        camera_y = std::clamp(player_feet - logical_size().y * 0.64, 0.0, std::max(0.0, stage.world_height - logical_size().y));
+        spawn_particles(Vector2(player_x, player_feet - 30.0), stage.monochrome ? rgba8(0x555555) : rgba8(0x744b42), 14, 100.0);
+        save_progress();
+    };
+    Rect2 body = player_body_rect();
+    bool hit = false;
     for (const Rect2 &hazard : stage.hazards) {
         if (hazard.position.x > -500.0 && body.intersects(hazard)) {
-            remaining_time = std::max(0.0, remaining_time - 10.0);
-            player_x = stage.spawn.x;
-            player_feet = stage.spawn.y;
-            player_vy = 0.0;
-            camera_x = 0.0;
-            spawn_particles(Vector2(player_x, player_feet - 30.0), stage.monochrome ? rgba8(0x555555) : rgba8(0x744b42), 14, 100.0);
+            hit = true;
             break;
+        }
+    }
+    for (const RazorSawData &saw : stage.saws) {
+        const double center_x = motion_position(saw.x0, saw.x1, saw.speed, stage_elapsed);
+        const Rect2 saw_bounds(Vector2(center_x - 32.0, saw.y - 32.0), Vector2(64.0, 64.0));
+        if (body.intersects(saw_bounds)) {
+            hit = true;
+            break;
+        }
+    }
+    if (hit) {
+        respawn();
+        return;
+    }
+    if (player_feet > stage.world_height + 96.0) {
+        respawn();
+        return;
+    }
+
+    for (RazorCheckpointData &checkpoint : stage.checkpoints) {
+        if (std::abs(player_x - checkpoint.position.x) < 64.0 && std::abs(player_feet - checkpoint.position.y) < 160.0) {
+            checkpoint_x = checkpoint.position.x;
+            checkpoint_feet = checkpoint.position.y;
+            checkpoint.activated = true;
+        }
+    }
+
+    body = player_body_rect();
+    for (size_t i = 0; i < stage.stars.size() && i < 3; ++i) {
+        RazorStarData &star = stage.stars[i];
+        if (!star.collected && body.grow(24.0).has_point(star.position)) {
+            star.collected = true;
+            RazorLevelProgress &progress = level_progress[stage_index];
+            const uint8_t bit = static_cast<uint8_t>(1u << i);
+            if ((progress.star_mask & bit) == 0) {
+                progress.star_mask |= bit;
+                coins += 5;
+                coins_earned += 5;
+            }
+            spawn_particles(star.position, rgba8(0xd5a749), 10, 100.0);
+            save_progress();
         }
     }
     for (size_t i = 0; i < stage.coins.size() && i < 256; ++i) {
@@ -533,18 +1159,12 @@ void RazorPathGame::_physics_process(double delta) {
             stage_coin_collected[i] = true;
             ++stage_coins;
             ++coins;
+            ++coins_earned;
             spawn_particles(stage.coins[i], stage.monochrome ? rgba8(0x222222) : rgba8(0xd5a749), 12, 105.0);
             save_progress();
         }
     }
 
-    if (player_feet > 900.0) {
-        remaining_time = std::max(0.0, remaining_time - 10.0);
-        player_x = stage.spawn.x;
-        player_feet = stage.spawn.y;
-        player_vy = 0.0;
-        camera_x = 0.0;
-    }
     if (std::abs(player_x - stage.exit.x) < 38.0 && std::abs(player_feet - stage.exit.y) < 90.0) {
         if (stage_coins >= static_cast<int32_t>(stage.required_coins)) {
             complete_stage();
@@ -562,6 +1182,10 @@ void RazorPathGame::_physics_process(double delta) {
     const double max_camera = std::max(0.0, stage.world_width - view_width);
     const double target_camera = std::clamp(player_x - view_width * 0.38, 0.0, max_camera);
     camera_x += (target_camera - camera_x) * std::min(1.0, 8.0 * delta);
+    const double view_height = logical_size().y;
+    const double max_camera_y = std::max(0.0, stage.world_height - view_height);
+    const double target_camera_y = std::clamp(player_feet - view_height * 0.64, 0.0, max_camera_y);
+    camera_y += (target_camera_y - camera_y) * std::min(1.0, 8.0 * delta);
 }
 
 Vector2 RazorPathGame::logical_size() const {
@@ -595,6 +1219,24 @@ Color RazorPathGame::hero_tint() const {
     if (selected_skin == 2) {
         return Color(0.74, 0.84, 0.92, 1.0);
     }
+    if (selected_skin == 3) {
+        return Color(0.31, 0.34, 0.36, 1.0);
+    }
+    if (selected_skin == 4) {
+        return Color(1.0, 0.52, 0.32, 1.0);
+    }
+    if (selected_skin == 5) {
+        return Color(0.60, 0.83, 1.0, 1.0);
+    }
+    if (selected_skin == 6) {
+        return Color(0.83, 0.90, 0.94, 0.88);
+    }
+    if (selected_skin == 7) {
+        return Color(0.39, 0.86, 0.84, 1.0);
+    }
+    if (selected_skin == 8) {
+        return Color(0.43, 0.36, 0.50, 1.0);
+    }
     return Color(1.0, 1.0, 1.0, 1.0);
 }
 
@@ -603,11 +1245,13 @@ Rect2 RazorPathGame::player_body_rect() const {
 }
 
 int32_t RazorPathGame::current_hero_frame() const {
+    // Keep movement/attack pose changes on a 30 Hz tick, independent of display refresh.
+    const int64_t animation_tick = static_cast<int64_t>(std::floor(animation_time * kHeroAnimationFps));
     if (screen == RazorScreen::VICTORY || screen == RazorScreen::STAGE_CLEAR) {
         return 7;
     }
     if (attack_time > 0.0) {
-        return (static_cast<int32_t>(animation_time * 16.0) % 2 == 0) ? 3 : 7;
+        return (animation_tick % 2 == 0) ? 3 : 7;
     }
     if (!on_ground) {
         return player_vy < -70.0 ? 4 : 5;
@@ -619,7 +1263,7 @@ int32_t RazorPathGame::current_hero_frame() const {
     const bool moving = input->is_key_pressed(Key::KEY_A) || input->is_key_pressed(Key::KEY_D) ||
         input->is_key_pressed(Key::KEY_LEFT) || input->is_key_pressed(Key::KEY_RIGHT) || !touch_actions.empty();
     if (moving) {
-        return (static_cast<int32_t>(animation_time * 10.0) % 2 == 0) ? 1 : 2;
+        return (animation_tick % 2 == 0) ? 1 : 2;
     }
     return 0;
 }
@@ -676,9 +1320,11 @@ void RazorPathGame::_draw() {
     const double scale_y = size.y / 720.0;
     const double world_scale_y = scale_y;
     const double camera = showing_world ? camera_x : 0.0;
+    const double camera_vertical = showing_world ? camera_y : 0.0;
     const Color platform = platform_color();
-    for (const Rect2 &platform_rect : stage.platforms) {
-        const Rect2 visible(Vector2((platform_rect.position.x - camera) * scale_x, platform_rect.position.y * scale_y),
+    for (const RazorPlatformData &platform_data : stage.platforms) {
+        const Rect2 platform_rect = current_platform_rect(platform_data, stage_elapsed);
+        const Rect2 visible(Vector2((platform_rect.position.x - camera) * scale_x, (platform_rect.position.y - camera_vertical) * scale_y),
             Vector2(platform_rect.size.x * scale_x, std::max(7.0, platform_rect.size.y * scale_y)));
         if (visible.position.x < size.x && visible.position.x + visible.size.x > 0.0) {
             draw_rect(visible, platform, true);
@@ -687,6 +1333,26 @@ void RazorPathGame::_draw() {
     }
 
     // Foreground landmarks: small ladders, sparse grass and a blocky exit gate.
+    for (const Rect2 &ceiling : stage.ceilings) {
+        const Rect2 visible(Vector2((ceiling.position.x - camera) * scale_x, (ceiling.position.y - camera_vertical) * scale_y),
+            Vector2(ceiling.size.x * scale_x, ceiling.size.y * scale_y));
+        if (visible.position.x < size.x && visible.position.x + visible.size.x > 0.0) {
+            draw_rect(visible, platform, true);
+        }
+    }
+    for (const RazorLadderData &ladder : stage.ladders) {
+        const double x = (ladder.x - camera) * scale_x;
+        const double top = (ladder.y0 - camera_vertical) * scale_y;
+        const double bottom = (ladder.y1 - camera_vertical) * scale_y;
+        if (x > -40.0 && x < size.x + 40.0) {
+            const Color rung = stage.monochrome ? rgba8(0x080808) : rgba8(0x171614);
+            draw_line(Vector2(x - 16.0 * scale_x, top), Vector2(x - 16.0 * scale_x, bottom), rung, 4.0 * scale_x);
+            draw_line(Vector2(x + 16.0 * scale_x, top), Vector2(x + 16.0 * scale_x, bottom), rung, 4.0 * scale_x);
+            for (double y = top + 18.0 * scale_y; y < bottom; y += 28.0 * scale_y) {
+                draw_line(Vector2(x - 16.0 * scale_x, y), Vector2(x + 16.0 * scale_x, y), rung, 3.0 * scale_x);
+            }
+        }
+    }
     for (int32_t ladder = 0; ladder < 4; ++ladder) {
         const double lx = (520.0 + ladder * 950.0 - camera) * scale_x;
         const double ly = size.y * 0.60;
@@ -705,7 +1371,7 @@ void RazorPathGame::_draw() {
         if (stage_coin_collected[i]) {
             continue;
         }
-        const Vector2 center((stage.coins[i].x - camera) * scale_x, stage.coins[i].y * scale_y);
+        const Vector2 center((stage.coins[i].x - camera) * scale_x, (stage.coins[i].y - camera_vertical) * scale_y);
         if (center.x > -24.0 && center.x < size.x + 24.0) {
             draw_circle(center, 12.0 * scale_x, stage.monochrome ? rgba8(0x222222) : rgba8(0xd8ab42));
             draw_circle(center, 6.0 * scale_x, stage.monochrome ? rgba8(0xf5f5f5) : rgba8(0xf4df9b));
@@ -716,7 +1382,7 @@ void RazorPathGame::_draw() {
         if (hazard.position.x < -500.0) {
             continue;
         }
-        const Rect2 r(Vector2((hazard.position.x - camera) * scale_x, hazard.position.y * scale_y),
+        const Rect2 r(Vector2((hazard.position.x - camera) * scale_x, (hazard.position.y - camera_vertical) * scale_y),
             Vector2(hazard.size.x * scale_x, hazard.size.y * scale_y));
         if (r.position.x < size.x && r.position.x + r.size.x > 0.0) {
             draw_rect(r, stage.monochrome ? rgba8(0x111111) : rgba8(0x282724), true);
@@ -725,7 +1391,7 @@ void RazorPathGame::_draw() {
         }
     }
 
-    const Vector2 exit_pos((stage.exit.x - camera) * scale_x, stage.exit.y * scale_y);
+    const Vector2 exit_pos((stage.exit.x - camera) * scale_x, (stage.exit.y - camera_vertical) * scale_y);
     if (exit_pos.x > -100.0 && exit_pos.x < size.x + 100.0) {
         const Color gate = stage.monochrome ? rgba8(0x080808) : rgba8(0x111111);
         draw_rect(Rect2(exit_pos + Vector2(-24.0 * scale_x, -150.0 * scale_y), Vector2(16.0 * scale_x, 150.0 * scale_y)), gate, true);
@@ -733,11 +1399,55 @@ void RazorPathGame::_draw() {
         draw_rect(Rect2(exit_pos + Vector2(-24.0 * scale_x, -150.0 * scale_y), Vector2(64.0 * scale_x, 14.0 * scale_y)), gate, true);
     }
 
+    for (const RazorSawData &saw : stage.saws) {
+        const double center_x = motion_position(saw.x0, saw.x1, saw.speed, stage_elapsed);
+        const Vector2 center((center_x - camera) * scale_x, (saw.y - camera_vertical) * scale_y);
+        if (center.x > -60.0 && center.x < size.x + 60.0) {
+            const double radius = 38.0 * scale_x;
+            const Color blade = stage.monochrome ? rgba8(0x111111) : rgba8(0x24211e);
+            draw_circle(center, radius, blade);
+            for (int32_t tooth = 0; tooth < 8; ++tooth) {
+                const double angle = Math_TAU * tooth / 8.0 + animation_time * 4.0;
+                draw_line(center, center + Vector2(std::cos(angle), std::sin(angle)) * radius, rgba8(0xf1e4cb), 2.0 * scale_x);
+            }
+            draw_circle(center, radius * 0.28, stage.monochrome ? rgba8(0xf5f5f5) : rgba8(0xc28a39));
+        }
+    }
+
+    for (const RazorStarData &star : stage.stars) {
+        if (star.collected) {
+            continue;
+        }
+        const Vector2 center((star.position.x - camera) * scale_x, (star.position.y - camera_vertical) * scale_y);
+        if (center.x < -24.0 || center.x > size.x + 24.0) {
+            continue;
+        }
+        PackedVector2Array points;
+        for (int32_t point = 0; point < 10; ++point) {
+            const double angle = -Math_PI * 0.5 + point * Math_PI / 5.0;
+            const double radius = (point % 2 == 0 ? 15.0 : 7.0) * scale_x;
+            points.push_back(center + Vector2(std::cos(angle), std::sin(angle)) * radius);
+        }
+        draw_colored_polygon(points, rgba8(0xe1b449));
+    }
+
+    for (const RazorCheckpointData &checkpoint : stage.checkpoints) {
+        const Vector2 base((checkpoint.position.x - camera) * scale_x, (checkpoint.position.y - camera_vertical) * scale_y);
+        if (base.x > -24.0 && base.x < size.x + 24.0) {
+            draw_line(base, base + Vector2(0.0, -58.0 * scale_y), platform, 3.0 * scale_x);
+            PackedVector2Array flag_points;
+            flag_points.push_back(base + Vector2(1.0 * scale_x, -56.0 * scale_y));
+            flag_points.push_back(base + Vector2(30.0 * scale_x, -48.0 * scale_y));
+            flag_points.push_back(base + Vector2(1.0 * scale_x, -39.0 * scale_y));
+            draw_colored_polygon(flag_points, checkpoint.activated ? rgba8(0x41a871) : rgba8(0xc28a39));
+        }
+    }
+
     if (screen == RazorScreen::PLAYING || screen == RazorScreen::PAUSED || screen == RazorScreen::STAGE_CLEAR || screen == RazorScreen::VICTORY || screen == RazorScreen::GAME_OVER) {
         const int32_t frame = current_hero_frame();
         const double sprite_width = 66.0 * scale_x;
         const double sprite_height = 132.0 * world_scale_y;
-        const Vector2 sprite_pos((player_x - camera) * scale_x - sprite_width * 0.5, player_feet * scale_y - sprite_height);
+        const Vector2 sprite_pos((player_x - camera) * scale_x - sprite_width * 0.5, (player_feet - camera_vertical) * scale_y - sprite_height);
         if (hero_frames[frame].is_valid()) {
             draw_texture_rect(hero_frames[frame], Rect2(sprite_pos, Vector2(sprite_width, sprite_height)), false, hero_tint());
         } else {
@@ -747,7 +1457,7 @@ void RazorPathGame::_draw() {
     }
 
     for (const Particle &particle : particles) {
-        const Vector2 p((particle.position.x - camera) * scale_x, particle.position.y * scale_y);
+        const Vector2 p((particle.position.x - camera) * scale_x, (particle.position.y - camera_vertical) * scale_y);
         const float alpha = static_cast<float>(std::clamp(particle.lifetime / 0.6, 0.0, 1.0));
         draw_circle(p, particle.size * scale_x, Color(particle.color.r, particle.color.g, particle.color.b, alpha));
     }
@@ -767,8 +1477,44 @@ void RazorPathGame::_draw() {
         draw_line(Vector2(size.x * 0.93 - 10.0, cy + 10.0), Vector2(size.x * 0.93 + 10.0, cy - 10.0), control_line, 5.0 * scale_x);
     }
 
-    if (screen == RazorScreen::PAUSED || screen == RazorScreen::SHOP || screen == RazorScreen::SETTINGS || screen == RazorScreen::LEVEL_SELECT || screen == RazorScreen::STAGE_CLEAR || screen == RazorScreen::VICTORY || screen == RazorScreen::GAME_OVER) {
+    if (screen == RazorScreen::PAUSED || screen == RazorScreen::SHOP || screen == RazorScreen::SETTINGS || screen == RazorScreen::LEVEL_SELECT || screen == RazorScreen::STATISTICS || screen == RazorScreen::GIFTS || screen == RazorScreen::ACHIEVEMENTS || screen == RazorScreen::STAGE_CLEAR || screen == RazorScreen::VICTORY || screen == RazorScreen::GAME_OVER) {
         draw_rect(Rect2(Vector2(), size), Color(0.02, 0.02, 0.02, 0.54), true);
+    }
+    if (show_purchase_confirm || pending_equip >= 0 || show_exit_confirm) {
+        draw_rect(Rect2(Vector2(size.x * 0.20, size.y * 0.56), Vector2(size.x * 0.60, size.y * 0.32)), Color(0.08, 0.07, 0.05, 0.96), true);
+        draw_rect(Rect2(Vector2(size.x * 0.20, size.y * 0.56), Vector2(size.x * 0.60, size.y * 0.32)), rgba8(0xe0bc68), false, 3.0);
+    }
+    if (screen == RazorScreen::LEVEL_SELECT) {
+        const auto found = authored_stages.find(std::clamp(selected_level, 1, 250));
+        const Rect2 panel(Vector2(size.x * 0.19, size.y * 0.705), Vector2(size.x * 0.62, size.y * 0.078));
+        draw_rect(panel, Color(0.96, 0.92, 0.81, 0.96), true);
+        draw_rect(panel, rgba8(0x766f5f), false, 2.0);
+        if (found != authored_stages.end()) {
+            const StageData &preview = found->second;
+            const double sx_preview = (panel.size.x - 24.0) / std::max(1.0, preview.world_width);
+            const double map_bottom = panel.position.y + panel.size.y - 7.0;
+            for (const RazorPlatformData &data : preview.platforms) {
+                const Rect2 platform_rect = current_platform_rect(data, 0.0);
+                const double lift = (preview.world_height - platform_rect.position.y) / 64.0 * 2.4;
+                const double x = panel.position.x + 12.0 + platform_rect.position.x * sx_preview;
+                const double y = map_bottom - lift;
+                const double width = std::max(2.0, platform_rect.size.x * sx_preview);
+                draw_rect(Rect2(Vector2(x, y), Vector2(width, 3.0)), platform_color(), true);
+            }
+            for (const Rect2 &hazard : preview.hazards) {
+                const double x = panel.position.x + 12.0 + hazard.position.x * sx_preview;
+                const double y = map_bottom - (preview.world_height - hazard.position.y) / 64.0 * 2.4;
+                draw_rect(Rect2(Vector2(x, y), Vector2(std::max(2.0, hazard.size.x * sx_preview), 5.0)), rgba8(0xb5493e), true);
+            }
+            const double start_x = panel.position.x + 12.0 + preview.spawn.x * sx_preview;
+            const double exit_x = panel.position.x + 12.0 + preview.exit.x * sx_preview;
+            draw_circle(Vector2(start_x, map_bottom - (preview.world_height - preview.spawn.y) / 64.0 * 2.4), 4.0, rgba8(0x427b58));
+            draw_line(Vector2(exit_x, panel.position.y + 5.0), Vector2(exit_x, map_bottom), rgba8(0xc28a39), 2.0);
+        }
+    }
+    if (screen == RazorScreen::HOME && hero_frames[0].is_valid()) {
+        const double scale = size.x / 1280.0;
+        draw_texture_rect(hero_frames[0], Rect2(Vector2(size.x * 0.475, size.y * 0.24), Vector2(64.0 * scale, 108.0 * scale)), false, hero_tint());
     }
 }
 
@@ -801,7 +1547,7 @@ void RazorPathGame::add_label(const String &text, const Rect2 &rect, int32_t fon
     if (bold && arabic_bold_font.is_valid()) {
         label->add_theme_font_override("font", arabic_bold_font);
     }
-    label->add_theme_font_size_override("font_size", font_size);
+    label->add_theme_font_size_override("font_size", large_text ? static_cast<int32_t>(std::round(font_size * 1.18)) : font_size);
     ui_root->add_child(label);
 }
 
@@ -817,8 +1563,9 @@ Button *RazorPathGame::add_button(const String &text, const Rect2 &rect, const S
     button->set_layout_direction(Control::LAYOUT_DIRECTION_RTL);
     button->set_text_direction(Control::TEXT_DIRECTION_AUTO);
     button->set_focus_mode(Control::FOCUS_NONE);
-    button->add_theme_font_size_override("font_size", 24);
-    const Color fill = disabled ? rgba8(0x777777) : rgba8(0x171717);
+    button->add_theme_font_size_override("font_size", large_text ? 28 : 24);
+    const bool locked_level = action.begins_with("stage:") && static_cast<int32_t>(action.substr(6).to_int()) > unlocked_stage;
+    const Color fill = (disabled || locked_level) ? rgba8(0x777777) : rgba8(0x171717);
     Ref<StyleBoxFlat> normal;
     normal.instantiate();
     normal->set_bg_color(fill);
@@ -865,25 +1612,49 @@ void RazorPathGame::rebuild_ui() {
     };
 
     if (screen == RazorScreen::HOME) {
-        add_label(ui("RAZOR PATH"), rect(300, 100, 680, 100), 58, true, false);
-        add_label(ui("ظلال دافئة، قفزات دقيقة، وطريق يتكشف أمامك"), rect(230, 190, 820, 62), 25, false, true);
-        add_button(ui("ابدأ المرحلة ١"), rect(430, 300, 420, 70), "new_game");
-        add_button(ui("اختيار المرحلة"), rect(430, 390, 420, 64), "levels");
-        add_button(ui("المتجر"), rect(430, 474, 200, 64), "shop");
-        add_button(ui("الإعدادات"), rect(650, 474, 200, 64), "settings");
-        add_label(ui("الحركة: يسار ويمين   القفز   الهجوم   الرجوع: زر الجهاز"), rect(150, 545, 980, 46), 20, false, true);
+        add_label(ui("RAZOR PATH"), rect(300, 42, 680, 86), 56, true, false);
+        add_label(ui("٢٥٠ طريقًا — قفزات دقيقة، عقبات متحركة، ومكافآت تجميلية"), rect(230, 124, 820, 52), 23, false, true);
+        add_button(ui("العملات: ") + String::num_int64(coins) + ui(" +"), rect(24, 218, 230, 58), "offers");
+        add_button(ui("الهدية اليومية"), rect(270, 218, 226, 58), "gifts");
+        add_button(ui("الإحصاءات"), rect(512, 218, 226, 58), "statistics");
+        add_button(ui("الإنجازات"), rect(754, 218, 226, 58), "achievements");
+        add_button(ui("الإعدادات"), rect(996, 218, 260, 58), "settings");
+        add_button(ui("متابعة إلى الجولة ") + String::num_int64(unlocked_stage), rect(120, 318, 500, 68), "continue");
+        add_button(ui("اختيار جولة"), rect(660, 318, 500, 68), "levels");
+        add_button(ui("المتجر"), rect(120, 402, 500, 62), "shop");
+        add_button(ui("معاينة المظهر الحالي"), rect(660, 402, 500, 62), "appearance");
+        add_button(ui("إعلان المكافأة: +200"), rect(280, 494, 320, 62), "rewarded_ad");
+        add_button(ui("خروج"), rect(680, 494, 320, 62), "exit");
+        add_label(ui("الحركة: يسار ويمين، القفز، الهجوم؛ لمس الشاشة يدعم عدة أصابع"), rect(180, 575, 920, 40), 18, false, true);
     } else if (screen == RazorScreen::LEVEL_SELECT) {
-        add_label(ui("اختر طريقك"), rect(390, 52, 500, 78), 42, true);
+        const int32_t first_level = selection_page * 20 + 1;
+        const int32_t selected_group = std::clamp((selected_level + 9) / 10, 1, 25);
+        add_label(ui("اختر طريقك — ") + String::num_int64(completed_stages()) + ui(" / 250 مكتملة، النجوم ") + String::num_int64(total_stars()), rect(230, 32, 820, 70), 34, true);
         add_button(ui("رجوع"), rect(38, 35, 150, 58), "back");
-        for (int32_t i = 1; i <= 16; ++i) {
-            const int32_t col = (i - 1) % 4;
-            const int32_t row = (i - 1) / 4;
-            const double x = 185.0 + col * 230.0;
-            const double y = 150.0 + row * 112.0;
+        for (int32_t offset = 0; offset < 20 && first_level + offset <= 250; ++offset) {
+            const int32_t i = first_level + offset;
+            const int32_t col = offset % 5;
+            const int32_t row = offset / 5;
+            const double x = 34.0 + col * 246.0;
+            const double y = 128.0 + row * 79.0;
             const bool locked = i > unlocked_stage;
-            String caption = locked ? ui("مقفلة") : ui("المرحلة ") + String::num_int64(i);
-            add_button(caption, rect(x, y, 195, 74), "stage:" + String::num_int64(i), locked);
+            const auto progress = level_progress.find(i);
+            int32_t stars = 0;
+            if (progress != level_progress.end()) {
+                for (int32_t bit = 0; bit < 3; ++bit) {
+                    stars += (progress->second.star_mask & static_cast<uint8_t>(1u << bit)) != 0 ? 1 : 0;
+                }
+            }
+            String caption = String::num_int64(i) + (locked ? ui(" · مقفلة") : (progress != level_progress.end() && progress->second.completed ? ui(" · ★ ") + String::num_int64(stars) + ui("/3") : ui(" · مفتوحة")));
+            add_button(caption, rect(x, y, 228, 66), "stage:" + String::num_int64(i));
         }
+        const bool chest_claimed = claimed_group_chests[selected_group - 1];
+        const auto preview_level = authored_stages.find(selected_level);
+        const String preview_name = preview_level == authored_stages.end() ? String() : preview_level->second.name;
+        add_label(ui("صندوق المجموعة ") + String::num_int64(selected_group) + (chest_claimed ? ui(" — تم الاستلام") : ui(" — يُفتح بعد إكمال مستوياتها العشرة")) + ui(" · المعاينة: ") + preview_name, rect(245, 462, 790, 42), 19, true);
+        add_button(ui("الصفحة السابقة"), rect(245, 570, 220, 58), "page_prev", selection_page == 0);
+        add_label(String::num_int64(selection_page + 1) + ui(" / 13"), rect(505, 570, 270, 58), 23, true);
+        add_button(ui("الصفحة التالية"), rect(815, 570, 220, 58), "page_next", selection_page >= 12);
     } else if (screen == RazorScreen::PLAYING) {
         hud_label = memnew(Label);
         hud_label->set_position(Vector2(250.0 * sx, 16.0 * sy));
@@ -915,48 +1686,194 @@ void RazorPathGame::rebuild_ui() {
         add_button(ui("الإعدادات"), rect(650, 387, 190, 62), "settings");
         add_button(ui("العودة للقائمة"), rect(440, 467, 400, 62), "home");
     } else if (screen == RazorScreen::SHOP) {
-        add_label(ui("متجر المظاهر"), rect(390, 76, 500, 75), 42, true);
-        add_label(ui("رصيدك: ") + String::num_int64(coins), rect(460, 150, 360, 48), 25);
+        static const std::array<String, 9> skin_names = {ui("الأساسي"), ui("الذهبي"), ui("الحجري"), ui("الداكن"), ui("الناري"), ui("الجليدي"), ui("الشبحي"), ui("السماوي"), ui("المظلم")};
+        static const std::array<int32_t, 9> skin_prices = {0, 25, 50, 600, 700, 700, 900, 1000, 950};
+        static const std::array<String, 4> effect_names = {ui("بلا أثر"), ui("أثر ذهبي"), ui("أثر سماوي"), ui("أثر شبحي")};
+        static const std::array<int32_t, 4> effect_prices = {0, 200, 250, 300};
+        add_label(ui("متجر Razor Path"), rect(390, 48, 500, 68), 40, true);
+        add_label(ui("رصيد العملات: ") + String::num_int64(coins), rect(430, 112, 420, 40), 24);
         add_button(ui("رجوع"), rect(38, 35, 150, 58), "back");
-        add_button(ui("المظهر الأساسي، مجاني"), rect(345, 245, 590, 64), "skin:0", selected_skin == 0);
-        add_button(ui("المظهر الذهبي، ٢٥ عملة"), rect(345, 330, 590, 64), "skin:1", selected_skin == 1);
-        add_button(ui("المظهر الفضي، ٥٠ عملة"), rect(345, 415, 590, 64), "skin:2", selected_skin == 2);
-        add_label(ui("يُحفظ المظهر المختار تلقائيًا"), rect(390, 515, 500, 48), 22);
+        const std::array<String, 4> tab_names = {ui("المظاهر"), ui("المؤثرات"), ui("العناصر"), ui("عروض خاصة")};
+        for (int32_t tab = 0; tab < 4; ++tab) {
+            add_button(tab_names[tab], rect(170.0 + tab * 240.0, 160, 220, 52), "tab:" + String::num_int64(tab), shop_tab == tab);
+        }
+        if (shop_tab == 0) {
+            for (int32_t skin = 0; skin < static_cast<int32_t>(skin_names.size()); ++skin) {
+                const int32_t col = skin % 4;
+                const int32_t row = skin / 4;
+                const bool owned = owned_skins[skin];
+                String caption = skin_names[skin] + String("\n");
+                String action;
+                if (selected_skin == skin) {
+                    caption += ui("مجهز ✓");
+                    action = "skin:" + String::num_int64(skin);
+                } else if (owned) {
+                    caption += ui("تجهيز");
+                    action = "skin:" + String::num_int64(skin);
+                } else {
+                    caption += ui("شراء · ") + String::num_int64(skin_prices[skin]);
+                    action = "buy_skin:" + String::num_int64(skin);
+                }
+                add_button(caption, rect(82.0 + col * 286.0, 226.0 + row * 112.0, 260, 98), action, selected_skin == skin);
+            }
+        } else if (shop_tab == 1) {
+            for (int32_t effect = 0; effect < static_cast<int32_t>(effect_names.size()); ++effect) {
+                const bool owned = owned_effects[effect];
+                String caption = effect_names[effect] + String("\n");
+                String action;
+                if (selected_effect == effect) {
+                    caption += ui("مجهز ✓");
+                    action = "effect:" + String::num_int64(effect);
+                } else if (owned) {
+                    caption += ui("تجهيز");
+                    action = "effect:" + String::num_int64(effect);
+                } else {
+                    caption += ui("شراء · ") + String::num_int64(effect_prices[effect]);
+                    action = "buy_effect:" + String::num_int64(effect);
+                }
+                add_button(caption, rect(120.0 + effect * 265.0, 290, 235, 110), action, selected_effect == effect);
+            }
+            add_label(ui("آثار الركض والقفز تجميلية فقط ولا تغيّر سرعة اللاعب أو القفز."), rect(260, 440, 760, 60), 22);
+        } else if (shop_tab == 2) {
+            add_label(ui("لا توجد عناصر استهلاكية تغيّر الفيزياء أو تمنح حصانة؛ توازن المراحل محفوظ."), rect(210, 275, 860, 96), 27, true);
+            add_label(ui("قد تُضاف عناصر شكلية مستقبلًا بعد ربطها بنظام حفظ موثوق."), rect(250, 385, 780, 62), 21);
+        } else {
+            add_button(ui("حزمة 500 عملة — الشراء غير متاح"), rect(250, 250, 780, 66), "noop", true);
+            add_button(ui("حزمة 1200 عملة — الشراء غير متاح"), rect(250, 330, 780, 66), "noop", true);
+            add_button(ui("إزالة الإعلانات — غير متاحة"), rect(250, 410, 780, 66), "noop", true);
+            add_button(ui("إعلان مكافأة +200"), rect(250, 490, 780, 66), "rewarded_ad");
+            add_label(ui("لا يوجد مزود إعلانات أو دفع مهيأ؛ لن تُمنح عملات من دون إتمام إعلان فعلي."), rect(200, 560, 880, 44), 18);
+        }
+        const int64_t now = utc_now();
+        const bool gift_ready = daily_last_claim == 0 || (now > daily_last_claim && now - daily_last_claim >= 86400);
+        add_button(gift_ready ? ui("استلام الهدية اليومية +100") : ui("الهدية اليومية · عُد بعد 24 ساعة"), rect(440, 600, 400, 52), "daily_claim", !gift_ready);
     } else if (screen == RazorScreen::SETTINGS) {
         add_label(ui("الإعدادات"), rect(390, 76, 500, 75), 42, true);
         add_button(ui("رجوع"), rect(38, 35, 150, 58), "back");
-        add_button(muted ? ui("الصوت: مكتوم") : ui("الصوت: يعمل"), rect(345, 235, 590, 66), "mute");
-        add_button(reduced_motion ? ui("الحركة: منخفضة") : ui("الحركة: كاملة"), rect(345, 325, 590, 66), "motion");
-        add_label(ui("الوضع الأفقي ملء الشاشة"), rect(390, 435, 500, 50), 23);
+        add_button(muted ? ui("الصوت: مكتوم") : ui("الصوت: يعمل"), rect(345, 205, 590, 62), "mute");
+        add_button(reduced_motion ? ui("الحركة: منخفضة") : ui("الحركة: كاملة"), rect(345, 284, 590, 62), "motion");
+        add_button(large_text ? ui("حجم النص: كبير") : ui("حجم النص: عادي"), rect(345, 363, 590, 62), "text");
+        add_label(ui("الوضع الأفقي ملء الشاشة"), rect(390, 455, 500, 50), 23);
+    } else if (screen == RazorScreen::STATISTICS) {
+        const int64_t seconds = static_cast<int64_t>(play_seconds_total);
+        const String duration = String::num_int64(seconds / 3600) + ui(" س ") + String::num_int64((seconds / 60) % 60) + ui(" د ") + String::num_int64(seconds % 60) + ui(" ث");
+        add_label(ui("إحصاءات اللاعب"), rect(360, 60, 560, 70), 42, true);
+        add_button(ui("رجوع"), rect(38, 35, 150, 58), "back");
+        add_label(ui("الجولات المكتملة: ") + String::num_int64(completed_stages()) + ui(" / 250"), rect(300, 170, 680, 55), 27);
+        add_label(ui("النجوم: ") + String::num_int64(total_stars()) + ui(" / 750"), rect(300, 235, 680, 55), 27);
+        add_label(ui("العملات المكتسبة: ") + String::num_int64(coins_earned) + ui(" — الرصيد: ") + String::num_int64(coins), rect(300, 300, 680, 55), 25);
+        add_label(ui("عدد الوفيات: ") + String::num_int64(deaths) + ui(" — القفزات: ") + String::num_int64(total_jumps), rect(300, 365, 680, 55), 25);
+        add_label(ui("وقت اللعب: ") + duration, rect(300, 430, 680, 55), 25);
+    } else if (screen == RazorScreen::GIFTS) {
+        const int64_t now = utc_now();
+        const bool clock_back = daily_last_claim > 0 && now < daily_last_claim;
+        const int64_t left = daily_last_claim == 0 ? 0 : std::max<int64_t>(0, 86400 - (now - daily_last_claim));
+        const String countdown = String::num_int64(left / 3600) + ui(" ساعة، ") + String::num_int64((left / 60) % 60) + ui(" دقيقة، ") + String::num_int64(left % 60) + ui(" ثانية");
+        const bool ready = daily_last_claim == 0 || (!clock_back && left == 0);
+        add_label(ui("الهدايا"), rect(390, 64, 500, 70), 42, true);
+        add_button(ui("رجوع"), rect(38, 35, 150, 58), "back");
+        add_label(ui("هدية يومية: 100 عملة كل 24 ساعة"), rect(260, 175, 760, 56), 27, true);
+        add_button(ready ? ui("استلام +100") : ui("الوقت المتبقي: ") + countdown, rect(350, 250, 580, 68), "daily_claim", !ready);
+        if (clock_back) {
+            add_label(ui("ساعة الجهاز رجعت إلى الوراء؛ لن تُمنح هدية حتى يتجاوز الوقت آخر استلام."), rect(230, 335, 820, 58), 20);
+        }
+        add_button(ui("مشاهدة إعلان مكافأة +200"), rect(350, 425, 580, 68), "rewarded_ad");
+        add_label(ui("لا يتوفر إعلان الآن ما لم يكتمل إعلان فعلي عبر مزود إعلانات."), rect(260, 505, 760, 48), 19);
+    } else if (screen == RazorScreen::ACHIEVEMENTS) {
+        const std::array<String, 5> titles = {ui("أكمل أول جولة"), ui("اجمع 30 نجمة"), ui("أكمل 50 جولة"), ui("أكمل الحملة كاملة"), ui("اكسب 1000 عملة")};
+        const std::array<int32_t, 5> rewards = {25, 100, 250, 500, 100};
+        const std::array<bool, 5> eligible = {completed_stages() >= 1, total_stars() >= 30, completed_stages() >= 50, completed_stages() >= 250, coins_earned >= 1000};
+        add_label(ui("الإنجازات"), rect(390, 45, 500, 70), 42, true);
+        add_button(ui("رجوع"), rect(38, 35, 150, 58), "back");
+        for (int32_t i = 0; i < 5; ++i) {
+            const double y = 135.0 + i * 88.0;
+            add_label(titles[i] + ui(" · مكافأة ") + String::num_int64(rewards[i]), rect(220, y, 560, 58), 21, true);
+            add_button(claimed_achievements[i] ? ui("تم الاستلام") : (eligible[i] ? ui("استلام") : ui("غير مكتمل")),
+                rect(810, y, 250, 58), "achievement:" + String::num_int64(i), claimed_achievements[i] || !eligible[i]);
+        }
     } else if (screen == RazorScreen::STAGE_CLEAR) {
-        add_label(ui("أحسنت! الطريق التالي مفتوح"), rect(260, 150, 760, 80), 42, true);
-        add_label(ui("المرحلة ") + String::num_int64(stage_index) + ui(" اكتملت"), rect(390, 230, 500, 50), 25);
+        const auto progress = level_progress.find(stage_index);
+        const int32_t stars = progress == level_progress.end() ? 0 : static_cast<int32_t>((progress->second.star_mask & 1) != 0) + static_cast<int32_t>((progress->second.star_mask & 2) != 0) + static_cast<int32_t>((progress->second.star_mask & 4) != 0);
+        add_label(ui("أحسنت! الطريق التالي مفتوح"), rect(260, 120, 760, 76), 42, true);
+        add_label(ui("الجولة ") + String::num_int64(stage_index) + ui(" اكتملت · النجوم ") + String::num_int64(stars) + ui(" / 3 · +10 عملات"), rect(280, 205, 720, 54), 24);
         add_button(ui("المرحلة التالية"), rect(420, 335, 440, 68), "next");
         add_button(ui("اختيار المراحل"), rect(420, 420, 210, 62), "levels");
         add_button(ui("القائمة الرئيسية"), rect(650, 420, 210, 62), "home");
     } else if (screen == RazorScreen::VICTORY) {
         add_label(ui("اكتمل طريق الظلال!"), rect(260, 135, 760, 86), 46, true);
-        add_label(ui("أنهيت المراحل الست عشرة"), rect(350, 230, 580, 54), 28);
-        add_button(ui("العب المرحلة ١٦ مجددًا"), rect(385, 340, 510, 68), "restart");
+        add_label(ui("أنهيت الجولات الـ250 وجمعت ") + String::num_int64(total_stars()) + ui(" نجمة"), rect(260, 230, 760, 54), 27);
+        add_button(ui("أعد الجولة 250"), rect(385, 340, 510, 68), "restart");
         add_button(ui("القائمة الرئيسية"), rect(385, 428, 510, 64), "home");
     } else if (screen == RazorScreen::GAME_OVER) {
         add_label(ui("انتهى الوقت"), rect(390, 150, 500, 80), 44, true);
         add_button(ui("أعد المحاولة"), rect(420, 300, 440, 68), "restart");
         add_button(ui("القائمة الرئيسية"), rect(420, 390, 440, 64), "home");
     }
+
+    if (show_purchase_confirm && pending_purchase >= 0) {
+        static const std::array<String, 9> skin_names = {ui("الأساسي"), ui("الذهبي"), ui("الحجري"), ui("الداكن"), ui("الناري"), ui("الجليدي"), ui("الشبحي"), ui("السماوي"), ui("المظلم")};
+        static const std::array<int32_t, 9> skin_prices = {0, 25, 50, 600, 700, 700, 900, 1000, 950};
+        static const std::array<String, 4> effect_names = {ui("بلا أثر"), ui("أثر ذهبي"), ui("أثر سماوي"), ui("أثر شبحي")};
+        static const std::array<int32_t, 4> effect_prices = {0, 200, 250, 300};
+        const bool is_effect = pending_purchase >= 100;
+        const int32_t item = is_effect ? pending_purchase - 100 : pending_purchase;
+        const String name = is_effect ? effect_names[std::clamp(item, 0, 3)] : skin_names[std::clamp(item, 0, 8)];
+        const int32_t cost = is_effect ? effect_prices[std::clamp(item, 0, 3)] : skin_prices[std::clamp(item, 0, 8)];
+        add_label(ui("تأكيد شراء ") + name + ui(" · السعر ") + String::num_int64(cost) + ui(" · الرصيد بعد الشراء ") + String::num_int64(coins - cost), rect(250, 430, 780, 62), 24, true);
+        add_button(ui("تأكيد الشراء"), rect(350, 500, 250, 62), "confirm_purchase");
+        add_button(ui("إلغاء"), rect(680, 500, 250, 62), "cancel_purchase");
+    }
+    if (pending_equip >= 0) {
+        add_label(ui("تم الشراء بنجاح. هل تريد التجهيز الآن؟"), rect(250, 440, 780, 56), 24, true);
+        add_button(ui("تجهيز الآن"), rect(350, 505, 250, 62), "equip_pending");
+        add_button(ui("لاحقًا"), rect(680, 505, 250, 62), "later_equip");
+    }
+    if (show_exit_confirm) {
+        add_label(ui("هل تريد الخروج من اللعبة؟"), rect(360, 440, 560, 60), 26, true);
+        add_button(ui("خروج"), rect(390, 510, 220, 62), "confirm_exit");
+        add_button(ui("إلغاء"), rect(670, 510, 220, 62), "cancel_exit");
+    }
+    if (!ui_notice.is_empty()) {
+        toast_label = memnew(Label);
+        toast_label->set_text(ui_notice);
+        toast_label->set_position(Vector2(300.0 * sx, 648.0 * sy));
+        toast_label->set_size(Vector2(680.0 * sx, 48.0 * sy));
+        toast_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+        toast_label->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
+        toast_label->set_layout_direction(Control::LAYOUT_DIRECTION_RTL);
+        toast_label->set_text_direction(Control::TEXT_DIRECTION_RTL);
+        toast_label->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+        toast_label->add_theme_font_size_override("font_size", 20);
+        ui_root->add_child(toast_label);
+    }
     queue_redraw();
 }
 
 void RazorPathGame::set_screen(RazorScreen next_screen) {
+    if (screen == RazorScreen::PLAYING && next_screen != RazorScreen::PLAYING) {
+        save_progress();
+    }
     screen = next_screen;
     touch_actions.clear();
     jump_requested = false;
     attack_requested = false;
+    show_exit_confirm = false;
+    show_purchase_confirm = false;
     rebuild_ui();
 }
 
 void RazorPathGame::go_back() {
-    if (screen == RazorScreen::SHOP || screen == RazorScreen::SETTINGS) {
+    if (show_purchase_confirm) {
+        show_purchase_confirm = false;
+        pending_purchase = -1;
+        rebuild_ui();
+    } else if (pending_equip >= 0) {
+        pending_equip = -1;
+        rebuild_ui();
+    } else if (show_exit_confirm) {
+        show_exit_confirm = false;
+        rebuild_ui();
+    } else if (screen == RazorScreen::SHOP || screen == RazorScreen::SETTINGS || screen == RazorScreen::STATISTICS || screen == RazorScreen::GIFTS || screen == RazorScreen::ACHIEVEMENTS) {
         set_screen(return_screen);
     } else if (screen == RazorScreen::PAUSED) {
         set_screen(RazorScreen::PLAYING);
@@ -970,17 +1887,38 @@ void RazorPathGame::go_back() {
 void RazorPathGame::handle_action(const String &action) {
     if (action == "new_game") {
         start_new_run();
+    } else if (action == "continue") {
+        start_stage(std::clamp(unlocked_stage, 1, 250));
     } else if (action == "levels") {
         if (screen != RazorScreen::PAUSED) {
             return_screen = RazorScreen::HOME;
         }
+        selection_page = std::clamp((selected_level - 1) / 20, 0, 12);
         set_screen(RazorScreen::LEVEL_SELECT);
     } else if (action == "shop") {
         return_screen = screen;
+        shop_tab = 0;
+        set_screen(RazorScreen::SHOP);
+    } else if (action == "appearance") {
+        return_screen = screen;
+        shop_tab = 0;
+        set_screen(RazorScreen::SHOP);
+    } else if (action == "offers") {
+        return_screen = screen;
+        shop_tab = 3;
         set_screen(RazorScreen::SHOP);
     } else if (action == "settings") {
         return_screen = screen;
         set_screen(RazorScreen::SETTINGS);
+    } else if (action == "statistics") {
+        return_screen = screen;
+        set_screen(RazorScreen::STATISTICS);
+    } else if (action == "gifts") {
+        return_screen = screen;
+        set_screen(RazorScreen::GIFTS);
+    } else if (action == "achievements") {
+        return_screen = screen;
+        set_screen(RazorScreen::ACHIEVEMENTS);
     } else if (action == "back") {
         go_back();
     } else if (action == "pause") {
@@ -992,31 +1930,193 @@ void RazorPathGame::handle_action(const String &action) {
     } else if (action == "home") {
         set_screen(RazorScreen::HOME);
     } else if (action == "next") {
-        start_stage(std::min(16, stage_index + 1));
+        start_stage(std::min(250, stage_index + 1));
+    } else if (action == "page_prev") {
+        selection_page = std::max(0, selection_page - 1);
+        selected_level = selection_page * 20 + 1;
+        rebuild_ui();
+    } else if (action == "page_next") {
+        selection_page = std::min(12, selection_page + 1);
+        selected_level = selection_page * 20 + 1;
+        rebuild_ui();
+    } else if (action.begins_with("tab:")) {
+        shop_tab = std::clamp(static_cast<int32_t>(action.substr(4).to_int()), 0, 3);
+        rebuild_ui();
     } else if (action.begins_with("stage:")) {
         const int32_t chosen = static_cast<int32_t>(action.substr(6).to_int());
+        selected_level = std::clamp(chosen, 1, 250);
         if (chosen <= unlocked_stage) {
             start_stage(chosen);
+        } else {
+            ui_notice = ui("أكمل الجولة ") + String::num_int64(unlocked_stage) + ui(" أولًا لفتح هذه الجولة.");
+            toast_time = 2.5;
+            rebuild_ui();
         }
     } else if (action.begins_with("skin:")) {
         const int32_t chosen = static_cast<int32_t>(action.substr(5).to_int());
-        const int32_t cost = chosen == 1 ? 25 : (chosen == 2 ? 50 : 0);
-        if (chosen >= 0 && chosen <= 2 && coins >= cost) {
-            if (selected_skin != chosen) {
-                coins -= cost;
-            }
+        if (chosen >= 0 && chosen < static_cast<int32_t>(owned_skins.size()) && owned_skins[chosen]) {
+            const int32_t previous_skin = selected_skin;
             selected_skin = chosen;
-            save_progress();
+            if (!save_progress()) {
+                selected_skin = previous_skin;
+                ui_notice = ui("تعذر حفظ المظهر المحدد.");
+                toast_time = 2.8;
+            }
             rebuild_ui();
-        } else if (coins < cost && toast_label != nullptr) {
-            toast_label->set_text(ui("اجمع عملات إضافية أولًا"));
         }
+    } else if (action.begins_with("buy_skin:")) {
+        const int32_t chosen = static_cast<int32_t>(action.substr(9).to_int());
+        static const std::array<int32_t, 9> prices = {0, 25, 50, 600, 700, 700, 900, 1000, 950};
+        if (chosen > 0 && chosen < static_cast<int32_t>(owned_skins.size()) && !owned_skins[chosen]) {
+            if (coins < prices[chosen]) {
+                shop_tab = 3;
+                ui_notice = ui("عملات غير كافية؛ راجع العروض المتاحة.");
+                toast_time = 2.8;
+            } else {
+                pending_purchase = chosen;
+                show_purchase_confirm = true;
+            }
+            rebuild_ui();
+        }
+    } else if (action.begins_with("effect:")) {
+        const int32_t chosen = static_cast<int32_t>(action.substr(7).to_int());
+        if (chosen >= 0 && chosen < static_cast<int32_t>(owned_effects.size()) && owned_effects[chosen]) {
+            const int32_t previous_effect = selected_effect;
+            selected_effect = chosen;
+            if (!save_progress()) {
+                selected_effect = previous_effect;
+                ui_notice = ui("تعذر حفظ الأثر المحدد.");
+                toast_time = 2.8;
+            }
+            rebuild_ui();
+        }
+    } else if (action.begins_with("buy_effect:")) {
+        const int32_t chosen = static_cast<int32_t>(action.substr(11).to_int());
+        static const std::array<int32_t, 4> prices = {0, 200, 250, 300};
+        if (chosen > 0 && chosen < static_cast<int32_t>(owned_effects.size()) && !owned_effects[chosen]) {
+            if (coins < prices[chosen]) {
+                shop_tab = 3;
+                ui_notice = ui("عملات غير كافية؛ راجع العروض المتاحة.");
+                toast_time = 2.8;
+            } else {
+                pending_purchase = 100 + chosen;
+                show_purchase_confirm = true;
+            }
+            rebuild_ui();
+        }
+    } else if (action == "confirm_purchase") {
+        const int32_t item = pending_purchase;
+        show_purchase_confirm = false;
+        ui_notice = String();
+        bool purchased = false;
+        if (item >= 0 && item < static_cast<int32_t>(owned_skins.size())) {
+            purchased = purchase_skin(item);
+        } else if (item >= 100 && item < 100 + static_cast<int32_t>(owned_effects.size())) {
+            static const std::array<int32_t, 4> prices = {0, 200, 250, 300};
+            const int32_t effect = item - 100;
+            if (effect > 0 && !owned_effects[effect] && coins >= prices[effect]) {
+                const int32_t previous_coins = coins;
+                coins -= prices[effect];
+                owned_effects[effect] = true;
+                purchased = save_progress();
+                if (!purchased) {
+                    coins = previous_coins;
+                    owned_effects[effect] = false;
+                    ui_notice = ui("تعذر حفظ الشراء؛ لم تُخصم العملات.");
+                }
+            }
+        }
+        pending_purchase = -1;
+        if (purchased) {
+            pending_equip = item;
+            ui_notice = ui("تم حفظ الشراء. يمكنك تجهيز العنصر الآن.");
+        } else {
+            shop_tab = 3;
+            if (ui_notice.is_empty()) {
+                ui_notice = ui("تعذر الشراء أو أن العنصر مملوك مسبقًا.");
+            }
+        }
+        toast_time = 2.8;
+        rebuild_ui();
+    } else if (action == "cancel_purchase") {
+        show_purchase_confirm = false;
+        pending_purchase = -1;
+        rebuild_ui();
+    } else if (action == "equip_pending") {
+        const int32_t previous_skin = selected_skin;
+        const int32_t previous_effect = selected_effect;
+        if (pending_equip >= 100) {
+            selected_effect = pending_equip - 100;
+        } else if (pending_equip >= 0) {
+            selected_skin = pending_equip;
+        }
+        pending_equip = -1;
+        if (!save_progress()) {
+            selected_skin = previous_skin;
+            selected_effect = previous_effect;
+            ui_notice = ui("تعذر حفظ التجهيز؛ لم يتغير اختيارك.");
+            toast_time = 2.8;
+        }
+        rebuild_ui();
+    } else if (action == "later_equip") {
+        pending_equip = -1;
+        rebuild_ui();
+    } else if (action == "daily_claim") {
+        ui_notice = String();
+        if (claim_daily_gift(utc_now())) {
+            ui_notice = ui("استلمت 100 عملة. عُد بعد 24 ساعة.");
+        } else if (ui_notice.is_empty()) {
+            ui_notice = ui("الهدية غير جاهزة أو أن ساعة الجهاز رجعت إلى الوراء.");
+        }
+        toast_time = 3.0;
+        rebuild_ui();
+    } else if (action == "rewarded_ad") {
+        ui_notice = has_rewarded_ad ? ui("لم يكتمل الإعلان؛ لم تُمنح عملات.") : ui("لا يوجد إعلان الآن؛ لم تُمنح أي عملات.");
+        toast_time = 3.0;
+        rebuild_ui();
+    } else if (action.begins_with("achievement:")) {
+        const int32_t id = static_cast<int32_t>(action.substr(13).to_int());
+        const std::array<int32_t, 5> rewards = {25, 100, 250, 500, 100};
+        const std::array<bool, 5> eligible = {completed_stages() >= 1, total_stars() >= 30, completed_stages() >= 50, completed_stages() >= 250, coins_earned >= 1000};
+        if (id >= 0 && id < 5 && !claimed_achievements[id] && eligible[id]) {
+            const int32_t previous_coins = coins;
+            const int32_t previous_coins_earned = coins_earned;
+            claimed_achievements[id] = true;
+            coins += rewards[id];
+            coins_earned += rewards[id];
+            if (save_progress()) {
+                ui_notice = ui("تم استلام مكافأة الإنجاز.");
+            } else {
+                claimed_achievements[id] = false;
+                coins = previous_coins;
+                coins_earned = previous_coins_earned;
+                ui_notice = ui("تعذر حفظ المكافأة؛ لم تُضف العملات.");
+            }
+        }
+        toast_time = 2.4;
+        rebuild_ui();
+    } else if (action == "exit") {
+        show_exit_confirm = true;
+        rebuild_ui();
+    } else if (action == "confirm_exit") {
+        save_progress();
+        get_tree()->quit();
+    } else if (action == "cancel_exit") {
+        show_exit_confirm = false;
+        rebuild_ui();
     } else if (action == "mute") {
         muted = !muted;
+        if (AudioServer::get_singleton() != nullptr) {
+            AudioServer::get_singleton()->set_bus_mute(0, muted);
+        }
         save_progress();
         rebuild_ui();
     } else if (action == "motion") {
         reduced_motion = !reduced_motion;
+        save_progress();
+        rebuild_ui();
+    } else if (action == "text") {
+        large_text = !large_text;
         save_progress();
         rebuild_ui();
     }
@@ -1027,7 +2127,7 @@ void RazorPathGame::_on_ui_action(const String &action) {
 }
 
 bool RazorPathGame::start_test_stage(int32_t requested_index) {
-    if (requested_index < 1 || requested_index > 16) {
+    if (requested_index < 1 || requested_index > 250) {
         return false;
     }
     unlocked_stage = std::max(unlocked_stage, requested_index);
@@ -1093,7 +2193,7 @@ bool RazorPathGame::test_try_start_stage(int32_t requested_index) {
 }
 
 void RazorPathGame::test_set_unlocked_stage(int32_t requested_index) {
-    unlocked_stage = std::clamp(requested_index, 1, 16);
+    unlocked_stage = std::clamp(requested_index, 1, 250);
 }
 
 void RazorPathGame::test_complete_current_stage() {
@@ -1116,6 +2216,41 @@ void RazorPathGame::test_back() {
     event->set_pressed(true);
     event->set_keycode(Key::KEY_BACK);
     _input(event);
+}
+
+bool RazorPathGame::test_stage_loadable(int32_t requested_index) {
+    if (requested_index < 1 || requested_index > 250) {
+        return false;
+    }
+    const StageData previous_stage = stage;
+    const int32_t previous_index = stage_index;
+    const bool loaded = load_stage(requested_index);
+    const bool has_campaign_record = requested_index == 1 || requested_index == 16 || stage.tile_campaign;
+    const bool valid = loaded && stage.index == requested_index && has_campaign_record && stage.world_width >= 640.0 && stage.world_height >= 640.0 &&
+        !stage.platforms.empty() && stage.stars.size() == 3 && stage.checkpoints.size() >= 1 && stage.exit.x > stage.spawn.x;
+    stage = previous_stage;
+    stage_index = previous_index;
+    return valid;
+}
+
+int32_t RazorPathGame::test_stage_star_count() const {
+    return static_cast<int32_t>(stage.stars.size());
+}
+
+void RazorPathGame::test_set_coins(int32_t value) {
+    coins = std::max(0, value);
+}
+
+bool RazorPathGame::test_purchase_skin(int32_t skin_index) {
+    return purchase_skin(skin_index);
+}
+
+bool RazorPathGame::test_claim_daily_gift_at(int64_t now_utc) {
+    return claim_daily_gift(now_utc);
+}
+
+bool RazorPathGame::test_skin_owned(int32_t skin_index) const {
+    return skin_index >= 0 && skin_index < static_cast<int32_t>(owned_skins.size()) && owned_skins[skin_index];
 }
 
 } // namespace godot

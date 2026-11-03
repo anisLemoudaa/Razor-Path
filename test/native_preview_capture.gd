@@ -15,11 +15,31 @@ func _capture() -> void:
 	await create_timer(0.35).timeout
 	_save_view("game-captures/razor-path-home.png")
 
+	game._on_ui_action("levels")
+	await process_frame
+	await process_frame
+	await create_timer(0.35).timeout
+	_save_view("game-captures/razor-path-level-select.png")
+	game._on_ui_action("back")
+	await process_frame
+	game.test_open_shop()
+	await process_frame
+	await process_frame
+	await create_timer(0.35).timeout
+	_save_view("game-captures/razor-path-shop.png")
+	game.test_back()
+	await process_frame
+
 	assert(game.start_test_stage(1), "stage 1 could not be opened for preview")
 	await process_frame
 	await process_frame
 	await create_timer(0.35).timeout
 	_save_view("game-captures/razor-path-stage-01.png")
+	game.test_complete_current_stage()
+	await process_frame
+	await process_frame
+	await create_timer(0.35).timeout
+	_save_view("game-captures/razor-path-stage-clear.png")
 
 	assert(game.start_test_stage(16), "stage 16 could not be opened for preview")
 	await process_frame
@@ -27,7 +47,18 @@ func _capture() -> void:
 	await create_timer(0.35).timeout
 	_save_view("game-captures/razor-path-stage-16.png")
 
-	print("native_preview_capture: saved home, stage 1 and stage 16 screenshots")
+	assert(game.start_test_stage(250), "stage 250 could not be opened for preview")
+	await process_frame
+	await process_frame
+	await create_timer(0.35).timeout
+	_save_view("game-captures/razor-path-stage-250.png")
+	game.test_complete_current_stage()
+	await process_frame
+	await process_frame
+	await create_timer(0.35).timeout
+	_save_view("game-captures/razor-path-victory.png")
+
+	print("native_preview_capture: saved home, selection, shop, gameplay, stage clear and campaign victory")
 	quit(0)
 
 

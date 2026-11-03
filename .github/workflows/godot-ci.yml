@@ -91,10 +91,23 @@ jobs:
       - name: Import project with Godot 4.4.1
         run: godot --headless --editor --quit --audio-driver Dummy --path .
 
+      - name: Run deterministic 250-stage generator tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run project checks and generated campaign tests
+        run: node --test test/godot-check.test.mjs test/exported-pack-profile.test.mjs test/razor-gen.test.mjs
+
       # The legacy GDScript contract suite depends on the removed autoload runtime.
       # Its active-runtime replacement is the native extension smoke test below.
       - name: Run native extension smoke test
-        run: godot --headless --audio-driver Dummy --path . --script test/native_extension_smoke.gd
+        shell: bash
+        run: |
+          set -euo pipefail
+          smoke_home="$(mktemp -d)"
+          trap 'rm -rf "$smoke_home"' EXIT
+          XDG_DATA_HOME="$smoke_home" godot --headless --audio-driver Dummy --path . --script test/native_extension_smoke.gd
 
       - name: Install Android export template
         shell: bash

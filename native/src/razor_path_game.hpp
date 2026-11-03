@@ -39,6 +39,49 @@ enum class RazorScreen : int32_t {
     STAGE_CLEAR = 6,
     VICTORY = 7,
     GAME_OVER = 8,
+    STATISTICS = 9,
+    GIFTS = 10,
+    ACHIEVEMENTS = 11,
+};
+
+struct RazorPlatformData {
+    Rect2 bounds;
+    Vector2 motion_start;
+    Vector2 motion_end;
+    double speed = 0.0;
+    bool moving = false;
+    bool vertical = false;
+    bool bridge = false;
+    bool ladder_top = false;
+};
+
+struct RazorSawData {
+    double x0 = 0.0;
+    double x1 = 0.0;
+    double y = 0.0;
+    double speed = 0.0;
+};
+
+struct RazorLadderData {
+    double x = 0.0;
+    double y0 = 0.0;
+    double y1 = 0.0;
+};
+
+struct RazorCheckpointData {
+    Vector2 position;
+    bool activated = false;
+};
+
+struct RazorStarData {
+    Vector2 position;
+    bool collected = false;
+};
+
+struct RazorLevelProgress {
+    bool completed = false;
+    uint8_t star_mask = 0;
+    double best_time = 0.0;
 };
 
 class RazorPathGame : public Node2D {
@@ -48,13 +91,21 @@ class RazorPathGame : public Node2D {
         int32_t index = 1;
         String name;
         double world_width = 3600.0;
+        double world_height = 720.0;
         double required_coins = 0.0;
         Vector2 spawn = Vector2(130.0, 590.0);
         Vector2 exit = Vector2(3460.0, 590.0);
         bool monochrome = false;
-        std::vector<Rect2> platforms;
+        bool tile_campaign = false;
+        int32_t group = 1;
+        std::vector<RazorPlatformData> platforms;
         std::vector<Vector2> coins;
         std::vector<Rect2> hazards;
+        std::vector<Rect2> ceilings;
+        std::vector<RazorLadderData> ladders;
+        std::vector<RazorSawData> saws;
+        std::vector<RazorCheckpointData> checkpoints;
+        std::vector<RazorStarData> stars;
     };
 
     struct Particle {
@@ -77,10 +128,12 @@ class RazorPathGame : public Node2D {
     RazorScreen return_screen = RazorScreen::HOME;
     StageData stage;
     std::unordered_map<int32_t, StageData> authored_stages;
+    std::unordered_map<int32_t, RazorLevelProgress> level_progress;
     std::array<Ref<Texture2D>, 8> hero_frames;
     Array hero_frame_assets;
     Ref<Theme> interface_theme;
     Ref<Font> arabic_bold_font;
+    String ui_notice;
     CanvasLayer *ui_layer = nullptr;
     Control *ui_root = nullptr;
     Label *hud_label = nullptr;
@@ -93,11 +146,26 @@ class RazorPathGame : public Node2D {
     int32_t coins = 0;
     int32_t stage_coins = 0;
     int32_t selected_skin = 0;
+    int32_t selected_effect = 0;
+    int32_t shop_tab = 0;
+    int32_t selection_page = 0;
+    int32_t selected_level = 1;
+    int32_t pending_purchase = -1;
+    int32_t pending_equip = -1;
     int32_t total_jumps = 0;
+    int32_t deaths = 0;
+    int32_t coins_earned = 0;
+    double play_seconds_total = 0.0;
     double player_x = 130.0;
     double player_feet = 590.0;
     double player_vy = 0.0;
     double camera_x = 0.0;
+    double camera_y = 0.0;
+    double stage_elapsed = 0.0;
+    double run_elapsed = 0.0;
+    double checkpoint_x = 130.0;
+    double checkpoint_feet = 590.0;
+    double touch_toast_time = 0.0;
     double remaining_time = 180.0;
     double animation_time = 0.0;
     double attack_time = 0.0;
@@ -110,7 +178,17 @@ class RazorPathGame : public Node2D {
     bool attack_requested = false;
     bool muted = false;
     bool reduced_motion = false;
+    bool large_text = false;
+    bool show_exit_confirm = false;
+    bool show_purchase_confirm = false;
+    bool has_rewarded_ad = false;
     bool run_finalized = false;
+    int64_t daily_last_claim = 0;
+    int64_t last_seen_utc = 0;
+    std::array<bool, 9> owned_skins = {true, false, false, false, false, false, false, false, false};
+    std::array<bool, 4> owned_effects = {true, false, false, false};
+    std::array<bool, 25> claimed_group_chests = {};
+    std::array<bool, 5> claimed_achievements = {};
     bool stage_coin_collected[256] = {};
 
     static void _bind_methods();
@@ -129,11 +207,14 @@ private:
     Ref<Theme> get_interface_theme() const;
     void load_assets();
     void load_save();
-    void save_progress();
+    bool save_progress();
     void load_authored_stages();
+    bool load_campaign_stages();
     bool load_stage(int32_t requested_index);
     StageData make_generated_stage(int32_t requested_index) const;
     StageData parse_stage(const Dictionary &record) const;
+    StageData parse_campaign_stage(const Dictionary &record) const;
+    Rect2 current_platform_rect(const RazorPlatformData &platform, double time) const;
     void start_new_run();
     void start_stage(int32_t requested_index);
     void complete_stage();
@@ -146,6 +227,12 @@ private:
     void set_screen(RazorScreen next_screen);
     void go_back();
     void handle_action(const String &action);
+    bool purchase_skin(int32_t skin_index);
+    bool claim_daily_gift(int64_t now_utc);
+    void check_group_chest(int32_t group_index);
+    int32_t total_stars() const;
+    int32_t completed_stages() const;
+    int64_t utc_now() const;
     void _on_ui_action(const String &action);
     void add_label(const String &text, const Rect2 &rect, int32_t font_size, bool bold = false, bool rtl = true);
     Button *add_button(const String &text, const Rect2 &rect, const String &action, bool disabled = false);
@@ -181,6 +268,12 @@ public:
     void test_open_shop();
     void test_open_settings();
     void test_back();
+    bool test_stage_loadable(int32_t requested_index);
+    int32_t test_stage_star_count() const;
+    void test_set_coins(int32_t value);
+    bool test_purchase_skin(int32_t skin_index);
+    bool test_claim_daily_gift_at(int64_t now_utc);
+    bool test_skin_owned(int32_t skin_index) const;
 };
 
 } // namespace godot
