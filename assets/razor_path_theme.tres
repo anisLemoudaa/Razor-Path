@@ -1,0 +1,16 @@
+[gd_resource type="Theme" load_steps=3 format=3]
+
+[ext_resource type="FontVariation" path="res://assets/fonts/razor_path_ui_regular.tres" id="1_font_regular"]
+[ext_resource type="FontVariation" path="res://assets/fonts/razor_path_ui_bold.tres" id="2_font_bold"]
+
+[resource]
+default_font = ExtResource("1_font_regular")
+default_font_size = 20
+Button/colors/font_color = Color(0.98, 0.97, 0.94, 1)
+Button/colors/font_hover_color = Color(1, 1, 1, 1)
+Button/colors/font_disabled_color = Color(0.78, 0.78, 0.76, 1)
+Button/fonts/font = ExtResource("2_font_bold")
+Button/font_sizes/font_size = 22
+Label/colors/font_color = Color(0.08, 0.08, 0.08, 1)
+Label/fonts/font = ExtResource("1_font_regular")
+Label/font_sizes/font_size = 20

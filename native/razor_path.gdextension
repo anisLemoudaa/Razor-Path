@@ -1,0 +1,15 @@
+[configuration]
+
+entry_symbol = "razor_path_library_init"
+compatibility_minimum = "4.4"
+reloadable = false
+
+[libraries]
+linux.debug.arm64 = "res://native/bin/librazor_path.linux.template_debug.arm64.so"
+linux.release.arm64 = "res://native/bin/librazor_path.linux.template_release.arm64.so"
+linux.debug.x86_64 = "res://native/bin/librazor_path.linux.template_debug.x86_64.so"
+linux.release.x86_64 = "res://native/bin/librazor_path.linux.template_release.x86_64.so"
+android.debug.arm32 = "res://native/bin/librazor_path.android.template_debug.arm32.so"
+android.release.arm32 = "res://native/bin/librazor_path.android.template_release.arm32.so"
+android.debug.arm64 = "res://native/bin/librazor_path.android.template_debug.arm64.so"
+android.release.arm64 = "res://native/bin/librazor_path.android.template_release.arm64.so"

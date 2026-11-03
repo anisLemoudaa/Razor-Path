@@ -1,0 +1,5 @@
+# Archived GDScript runtime and dependent checks
+
+The previous GDScript scenes, autoloads and their dependent tests are kept here as historical project source. They are intentionally excluded from Godot's active project scan by `.gdignore`; `project.godot` launches `scenes/native_main.tscn`, and the active game logic is the C++ GDExtension.
+
+The former GDScript suite and its JavaScript wrappers depended on the removed autoload/browser runtime, including `autoload/i18n.gd`, `test/smoke.gd` and old audio/gameplay regression scenes. They are preserved here rather than deleted, but are not advertised as active checks. `test/native_extension_smoke.gd` replaces the relevant current-runtime coverage: it verifies scene/theme/frame loading, JSON stage 1 and 16, sequential unlock and saved progress, independent touch IDs, visible Store/Settings back buttons and the Android Back route. The visual UI language is checked in rendered Xvfb captures by `test/native_preview_capture.gd`. The active Node test target retains the generic Godot-check and export-profile tests that do not depend on the retired runtime.

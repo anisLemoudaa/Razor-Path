@@ -1,0 +1,12 @@
+[gd_resource type="FontVariation" load_steps=3 format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/Nunito-VF.subset.woff2" id="1_primary"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansArabic-Regular.ttf" id="2_arabic"]
+
+[resource]
+resource_name = "Razor Path UI regular: Nunito + Noto Sans Arabic"
+base_font = ExtResource("1_primary")
+fallbacks = Array[Font]([ExtResource("2_arabic")])
+variation_opentype = {
+2003265652: 400
+}

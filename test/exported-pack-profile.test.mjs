@@ -1,48 +1,31 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, realpathSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-test('only a verified managed standalone or explicit release option selects stripped gates', async () => {
-  const source = readFileSync(new URL('../scripts/check-exported-pack.mjs', import.meta.url), 'utf8')
-  const selector = source.slice(0, source.indexOf('\nconst godot ='))
-    .replace(/^import \{ runGodotCheck \} from '[^']+'\n/m, '')
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'platformer-pack-profile-')))
-  const previousRuntime = process.env.GAME_RUNTIME
-  const previousArgs = process.argv
-  let attempt = 0
-  try {
-    mkdirSync(join(root, 'scripts'))
-    const installed = join(root, 'installed runtime')
-    mkdirSync(join(installed, 'scripts'), { recursive: true })
-    writeFileSync(join(installed, 'scripts/verify-game.mjs'),
-      'export function verifiedPack(root) { return { path: root + process.env.PLATFORMER_TEST_PACK } }')
-    const select = async args => {
-      process.argv = ['node', 'check-exported-pack.mjs', ...args]
-      const file = join(root, 'scripts', `selector-${++attempt}.mjs`)
-      writeFileSync(file, selector + '\nexport { packPath, releaseProfile }\n')
-      return import(pathToFileURL(file).href)
-    }
-    process.env.GAME_RUNTIME = installed
-    process.env.PLATFORMER_TEST_PACK = '/dist/standalone/index.pck'
-    assert.equal((await select([])).releaseProfile, true)
-    process.env.PLATFORMER_TEST_PACK = '/dist/.preview/builds/current/index.pck'
-    assert.equal((await select([])).releaseProfile, false)
-    assert.equal((await select(['raw.pck'])).releaseProfile, false)
-    const release = await select(['chosen.pck', '--release-profile'])
-    assert.equal(release.packPath, join(root, 'chosen.pck'))
-    assert.equal(release.releaseProfile, true)
-    process.env.GAME_RUNTIME = join(root, 'missing-runtime')
-    await assert.rejects(select([]), /Cannot find module/)
-    delete process.env.GAME_RUNTIME
-    assert.equal((await select([])).releaseProfile, false)
-  } finally {
-    process.argv = previousArgs
-    if (previousRuntime === undefined) delete process.env.GAME_RUNTIME
-    else process.env.GAME_RUNTIME = previousRuntime
-    delete process.env.PLATFORMER_TEST_PACK
-    rmSync(root, { recursive: true, force: true })
+const preset = readFileSync(new URL('../export_presets.cfg', import.meta.url), 'utf8')
+const extension = readFileSync(new URL('../native/razor_path.gdextension', import.meta.url), 'utf8')
+const workflow = readFileSync(new URL('../.github/workflows/godot-ci.yml', import.meta.url), 'utf8')
+
+test('Android export includes both native ABIs and verifies the signed debug package', () => {
+  assert.match(preset, /architectures\/armeabi-v7a=true/)
+  assert.match(preset, /architectures\/arm64-v8a=true/)
+  assert.match(preset, /package\/signed=true/)
+  assert.match(preset, /screen\/orientation=0/)
+  assert.match(preset, /data\/stages\/razor_path_levels\.json/)
+  assert.match(preset, /assets\/characters\/\*\.png/)
+  assert.match(preset, /assets\/razor_path_theme\.tres/)
+  assert.match(preset, /exclude_filter=.*legacy\/\*/)
+  assert.match(preset, /exclude_filter=.*test\/\*/)
+
+  for (const library of [
+    'librazor_path.android.template_debug.arm32.so',
+    'librazor_path.android.template_debug.arm64.so',
+  ]) {
+    assert.ok(extension.includes(library), `GDExtension must declare ${library}`)
+    assert.ok(workflow.includes(library), `CI must verify ${library}`)
   }
+  assert.match(workflow, /platform=android target=template_debug arch=arm32/)
+  assert.match(workflow, /platform=android target=template_debug arch=arm64/)
+  assert.match(workflow, /apksigner"\s+verify --verbose/)
+  assert.match(workflow, /actions\/upload-artifact@v4/)
 })

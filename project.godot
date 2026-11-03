@@ -18,23 +18,10 @@ boot_splash/bg_color=Color(0.14118, 0.11765, 0.15686, 1)
 
 
 
-config/name="Ashen Gauntlet"
-run/main_scene="res://scenes/title_screen.tscn"
-config/features=PackedStringArray("4.7", "GL Compatibility")
+config/name="Razor Path"
+run/main_scene="res://scenes/native_main.tscn"
+config/features=PackedStringArray("4.4", "GL Compatibility")
 config/quit_on_go_back=false
-
-[autoload]
-
-TuningBridge="*res://scripts/manus/preview/tuning_adapter.gd"
-
-I18n="*res://autoload/i18n.gd"
-
-ManusFontTheme="*res://autoload/manus_font_theme.gd"
-
-ViewportPolicy="*res://scripts/viewport_policy.gd"
-GameAudio="*res://scripts/game_audio.gd"
-SaveStore="*res://scripts/save_store.gd"
-TuningStore="*res://scripts/tuning_store.gd"
 
 [display]
 
@@ -42,7 +29,9 @@ window/size/viewport_width=1280
 window/size/viewport_height=720
 window/size/window_width_override=1280
 window/size/window_height_override=720
+window/size/mode=3
 window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
 
 [gui]
 

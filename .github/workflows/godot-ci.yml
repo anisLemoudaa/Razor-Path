@@ -16,24 +16,45 @@ jobs:
     container:
       image: barichello/godot-ci:4.4.1
     steps:
-      - name: Checkout
+      - name: Checkout with godot-cpp
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Install Android Java toolchain
+      - name: Install SCons and Android toolchain
         shell: bash
         run: |
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-17-jdk-headless ca-certificates unzip
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            openjdk-17-jdk-headless ca-certificates unzip python3-pip g++ make file
+          python3 -m pip install --break-system-packages 'SCons==4.8.1'
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
           export ANDROID_HOME=/usr/lib/android-sdk
           echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "$JAVA_HOME/bin" >> "$GITHUB_PATH"
           java -version
-          keytool -help >/dev/null
+          scons --version
           command -v sdkmanager
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;23.2.8568313"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/23.2.8568313" >> "$GITHUB_ENV"
+          test -x "$ANDROID_HOME/ndk/23.2.8568313/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
+
+      - name: Build Linux and Android GDExtension libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          scons -j2 platform=linux target=template_debug arch=x86_64
+          scons -j2 platform=linux target=template_release arch=x86_64
+          scons -j2 platform=android target=template_debug arch=arm32 ndk_version=23.2.8568313
+          scons -j2 platform=android target=template_debug arch=arm64 ndk_version=23.2.8568313
+          test -s native/bin/librazor_path.linux.template_debug.x86_64.so
+          test -s native/bin/librazor_path.linux.template_release.x86_64.so
+          test -s native/bin/librazor_path.android.template_debug.arm32.so
+          test -s native/bin/librazor_path.android.template_debug.arm64.so
+          file native/bin/*.so
 
       - name: Configure Godot Android editor settings
         shell: bash
@@ -59,41 +80,35 @@ jobs:
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
           test -f "$HOME/.android/debug.keystore"
-          test -d /usr/lib/android-sdk
+          test -d "$ANDROID_HOME"
           test -x "$JAVA_HOME/bin/java"
 
-      - name: Import project
-        run: godot --headless --editor --quit --audio-driver Dummy
+      - name: Import project with Godot 4.4.1
+        run: godot --headless --editor --quit --audio-driver Dummy --path .
 
-      - name: Run gameplay and UI contracts
-        run: godot --headless --audio-driver Dummy --path . --script test/gameplay_contract.gd && godot --headless --audio-driver Dummy --path . --script test/ui_contract.gd && godot --headless --audio-driver Dummy --path . --script test/tweak_regression.gd && godot --headless --audio-driver Dummy --path . --script test/vfx_regression.gd
+      # The legacy GDScript contract suite depends on the removed autoload runtime.
+      # Its active-runtime replacement is the native extension smoke test below.
+      - name: Run native extension smoke test
+        run: godot --headless --audio-driver Dummy --path . --script test/native_extension_smoke.gd
 
-      - name: Run smoke test
-        continue-on-error: true
-        run: godot --headless --path . -s test/smoke.gd
-
-      - name: Install Web export templates
+      - name: Install Android export template
+        shell: bash
         run: |
           mkdir -p "$HOME/.local/share/godot/export_templates/4.4.1.stable"
           wget -q "https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz" -O /tmp/godot-templates.tpz
-          unzip -jo /tmp/godot-templates.tpz 'templates/web_nothreads_debug.zip' 'templates/web_nothreads_release.zip' 'templates/android_debug.apk' 'templates/android_release.apk' -d "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          unzip -jo /tmp/godot-templates.tpz 'templates/android_debug.apk' -d "$HOME/.local/share/godot/export_templates/4.4.1.stable"
 
-      - name: Export Web build
-        run: mkdir -p build && godot --headless --path . --export-release Web build/index.html
-
-      - name: Export Android APK
+      - name: Export Android debug APK and verify signature/libraries
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p build/android
           godot --headless --path . --export-debug Android build/android/RazorPath-debug.apk
           test -s build/android/RazorPath-debug.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose build/android/RazorPath-debug.apk
-
-      - name: Upload Web artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: razor-path-web
-          path: build/index.html
-          if-no-files-found: error
+          unzip -l build/android/RazorPath-debug.apk > /tmp/apk-contents.txt
+          grep -F 'lib/armeabi-v7a/librazor_path.android.template_debug.arm32.so' /tmp/apk-contents.txt
+          grep -F 'lib/arm64-v8a/librazor_path.android.template_debug.arm64.so' /tmp/apk-contents.txt
 
       - name: Upload Android APK artifact
         uses: actions/upload-artifact@v4

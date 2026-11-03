@@ -16,3 +16,15 @@ The supplied `/home/ubuntu/upload/index.html` was copied byte-for-byte to `legac
 | `assets/legacy/embedded_11.mp3` | `audio/mpeg` | 49,534 | `9ebc5d424fed9a14386985b238edf91e87ad51243a543e9812368a04c4040fdb` |
 
 These files are reference assets extracted from the user-supplied prototype, not newly generated production assets.
+
+## Razor Path reapplication assets
+
+The following three JPEGs were supplied by the user as design references and are kept unchanged under `assets/reference/`:
+
+| File | SHA-256 |
+|---|---|
+| `assets/reference/warm_world.jpg` | `508dd11312eaf9a0ed0757da13cabd143b40a50428ca6bb8e06fe2a6275465aa` |
+| `assets/reference/razor_character_sheet.jpg` | `1d89846fe4e32f5b1288ac38b48001d5804463b3ff564da9d025b2e9904569c9` |
+| `assets/reference/level16_monochrome.jpg` | `883d5f64748b66bde53f9c6f01087049a8029b4d76acce76effe907a512f663d` |
+
+`tools/process_character_sheet.py` deterministically splits the supplied 4x2 character sheet into eight 160x292 RGBA frames. It removes only near-white pixels connected to the sheet edge (threshold 247), retains enclosed white character fills, and preserves the full common frame canvas as a shared pivot. The source Nunito WOFF2 is reused from the existing project template and copied to `assets/fonts/`; its SIL Open Font License is retained as `assets/fonts/Nunito-OFL.txt`. Two `FontVariation` resources combine Nunito with the corresponding Noto Sans Arabic fallback for Latin and Arabic UI coverage.
