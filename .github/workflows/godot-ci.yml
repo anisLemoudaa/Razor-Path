@@ -27,7 +27,9 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             openjdk-17-jdk-headless ca-certificates unzip python3-pip g++ make file
-          python3 -m pip install --break-system-packages 'SCons==4.8.1'
+          python3 -m pip install --user 'SCons==4.8.1'
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
           export ANDROID_HOME=/usr/lib/android-sdk
           echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
