@@ -32,3 +32,7 @@ The following three JPEGs were supplied by the user as design references and are
 ## Android app icon
 
 The user-supplied 1254x1254 PNG is preserved unchanged as `assets/reference/razor_path_app_icon_source.png` (1,737,202 bytes; SHA-256 `2a6a8a7a5a5b47b3d2d11a7f7b49a692d2f92860ce6234c59bc1bb721cfd2059`). `tools/prepare_app_icon.py` creates the 1920x1920 launcher icon with Lanczos resizing and an adaptive foreground/background pair at 432x432. For the adaptive foreground, only near-black pixels (`max(R,G,B) < 12`) connected to the source image edge are made transparent; the original artwork and source file remain unchanged. The foreground artwork is contained in a centered 288x288 safe area, and the matching background samples the source corner color.
+
+## Menu background
+
+`assets/ui/razor_path_menu_backdrop.png` is a project-specific generated 16:9 illustration of warm, layered ruins, mountains, and suspended platforms, made as a clean background plate without text, logo, or interface controls. UI labels, panels, buttons, stage previews, and character sprites remain live Godot elements. The image is a 2560x1440 PNG; no supplied reference image was modified or embedded as a flattened screen.

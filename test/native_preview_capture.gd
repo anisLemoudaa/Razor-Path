@@ -27,6 +27,9 @@ func _capture() -> void:
 	await process_frame
 	await create_timer(0.35).timeout
 	_save_view("game-captures/razor-path-shop.png")
+	for pose_index in range(30):
+		await create_timer(1.0 / 30.0).timeout
+		_save_view("game-captures/shop-run-cycle/frame-%02d.png" % (pose_index + 1))
 	game.test_back()
 	await process_frame
 
@@ -35,6 +38,11 @@ func _capture() -> void:
 	await process_frame
 	await create_timer(0.35).timeout
 	_save_view("game-captures/razor-path-stage-01.png")
+	assert(game.test_register_touch(707, 2), "right-move action should be held during the run-cycle preview")
+	for frame_index in range(30):
+		await create_timer(1.0 / 30.0).timeout
+		_save_view("game-captures/run-cycle/frame-%02d.png" % (frame_index + 1))
+	assert(game.test_release_touch(707), "run-cycle preview input should be released")
 	game.test_complete_current_stage()
 	await process_frame
 	await process_frame
@@ -58,7 +66,7 @@ func _capture() -> void:
 	await create_timer(0.35).timeout
 	_save_view("game-captures/razor-path-victory.png")
 
-	print("native_preview_capture: saved home, selection, shop, gameplay, stage clear and campaign victory")
+	print("native_preview_capture: saved home, selection, shop, gameplay, 30fps run cycles, stage clear and campaign victory")
 	quit(0)
 
 

@@ -26,6 +26,7 @@ class Control;
 class Font;
 class InputEvent;
 class Label;
+class TextureRect;
 class StyleBoxFlat;
 class Texture2D;
 
@@ -130,6 +131,7 @@ class RazorPathGame : public Node2D {
     std::unordered_map<int32_t, StageData> authored_stages;
     std::unordered_map<int32_t, RazorLevelProgress> level_progress;
     std::array<Ref<Texture2D>, 8> hero_frames;
+    Ref<Texture2D> menu_background;
     Array hero_frame_assets;
     Ref<Theme> interface_theme;
     Ref<Font> arabic_bold_font;
@@ -138,11 +140,14 @@ class RazorPathGame : public Node2D {
     Control *ui_root = nullptr;
     Label *hud_label = nullptr;
     Label *toast_label = nullptr;
+    TextureRect *hero_preview_widget = nullptr;
+    std::array<TextureRect *, 8> skin_preview_widgets = {};
+    Rect2 hero_preview_rect;
     std::vector<Particle> particles;
     std::unordered_map<int32_t, TouchAction> touch_actions;
 
     int32_t stage_index = 1;
-    int32_t unlocked_stage = 1;
+    int32_t unlocked_stage = 10;
     int32_t coins = 0;
     int32_t stage_coins = 0;
     int32_t selected_skin = 0;
@@ -150,6 +155,7 @@ class RazorPathGame : public Node2D {
     int32_t shop_tab = 0;
     int32_t selection_page = 0;
     int32_t selected_level = 1;
+    bool selected_level_confirmed = false;
     int32_t pending_purchase = -1;
     int32_t pending_equip = -1;
     int32_t total_jumps = 0;
@@ -224,6 +230,8 @@ private:
     void update_hud();
     void rebuild_ui();
     void clear_ui();
+    void add_panel(const Rect2 &rect, const Color &fill, const Color &border, int32_t radius = 14, int32_t border_width = 3);
+    TextureRect *add_texture_rect(const Ref<Texture2D> &texture, const Rect2 &rect, const Color &tint = Color(1.0, 1.0, 1.0, 1.0));
     void set_screen(RazorScreen next_screen);
     void go_back();
     void handle_action(const String &action);
@@ -244,6 +252,7 @@ private:
     Color hero_tint() const;
     Rect2 player_body_rect() const;
     int32_t current_hero_frame() const;
+    bool horizontal_input_active() const;
     Vector2 logical_size() const;
 
 public:
@@ -274,6 +283,7 @@ public:
     bool test_purchase_skin(int32_t skin_index);
     bool test_claim_daily_gift_at(int64_t now_utc);
     bool test_skin_owned(int32_t skin_index) const;
+    int32_t test_animation_frame_at(double animation_seconds);
 };
 
 } // namespace godot

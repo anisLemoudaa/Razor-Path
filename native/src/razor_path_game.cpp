@@ -14,11 +14,13 @@
 #include <godot_cpp/classes/input_event_screen_touch.hpp>
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/label.hpp>
+#include <godot_cpp/classes/panel.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/style_box_flat.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/texture2d.hpp>
+#include <godot_cpp/classes/texture_rect.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/variant/callable.hpp>
@@ -107,6 +109,7 @@ void RazorPathGame::_bind_methods() {
     ClassDB::bind_method(D_METHOD("test_purchase_skin", "skin_index"), &RazorPathGame::test_purchase_skin);
     ClassDB::bind_method(D_METHOD("test_claim_daily_gift_at", "now_utc"), &RazorPathGame::test_claim_daily_gift_at);
     ClassDB::bind_method(D_METHOD("test_skin_owned", "skin_index"), &RazorPathGame::test_skin_owned);
+    ClassDB::bind_method(D_METHOD("test_animation_frame_at", "animation_seconds"), &RazorPathGame::test_animation_frame_at);
     ClassDB::bind_method(D_METHOD("_on_ui_action", "action"), &RazorPathGame::_on_ui_action);
 }
 
@@ -126,6 +129,7 @@ void RazorPathGame::_ready() {
     ui_root = memnew(Control);
     ui_layer->add_child(ui_root);
     ui_root->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+    ui_root->set_layout_direction(Control::LAYOUT_DIRECTION_LTR);
     ui_root->set_mouse_filter(Control::MOUSE_FILTER_PASS);
     if (interface_theme.is_valid()) {
         ui_root->set_theme(interface_theme);
@@ -163,6 +167,7 @@ void RazorPathGame::load_assets() {
     ResourceLoader *loader = ResourceLoader::get_singleton();
     if (loader != nullptr) {
         arabic_bold_font = loader->load("res://assets/fonts/razor_path_ui_bold.tres");
+        menu_background = loader->load("res://assets/ui/razor_path_menu_backdrop.png");
         for (int32_t i = 0; i < 8; ++i) {
             if (i < hero_frame_assets.size() && hero_frame_assets[i].get_type() == Variant::OBJECT) {
                 hero_frames[i] = hero_frame_assets[i];
@@ -183,7 +188,7 @@ void RazorPathGame::load_save() {
     Ref<ConfigFile> config;
     config.instantiate();
     if (config->load("user://razor_path_save.cfg") == OK) {
-        unlocked_stage = static_cast<int32_t>(config->get_value("progress", "unlocked_stage", 1));
+        unlocked_stage = static_cast<int32_t>(config->get_value("progress", "unlocked_stage", 10));
         coins = static_cast<int32_t>(config->get_value("progress", "coins", 0));
         selected_skin = static_cast<int32_t>(config->get_value("appearance", "skin", 0));
         selected_effect = static_cast<int32_t>(config->get_value("effects", "equipped", 0));
@@ -242,7 +247,12 @@ void RazorPathGame::load_save() {
         daily_last_claim = std::max<int64_t>(0, static_cast<int64_t>(config->get_value("gifts", "daily_last_claim", 0)));
         last_seen_utc = std::max<int64_t>(0, static_cast<int64_t>(config->get_value("gifts", "last_seen_utc", 0)));
     }
-    unlocked_stage = std::clamp(unlocked_stage, 1, 250);
+    for (int32_t group = 0; group < static_cast<int32_t>(claimed_group_chests.size()); ++group) {
+        if (claimed_group_chests[group]) {
+            unlocked_stage = std::max(unlocked_stage, std::min(250, (group + 2) * 10));
+        }
+    }
+    unlocked_stage = std::clamp(unlocked_stage, 10, 250);
     coins = std::max(0, coins);
     selected_skin = std::clamp(selected_skin, 0, static_cast<int32_t>(owned_skins.size()) - 1);
     selected_effect = std::clamp(selected_effect, 0, static_cast<int32_t>(owned_effects.size()) - 1);
@@ -321,7 +331,7 @@ int64_t RazorPathGame::utc_now() const {
 }
 
 bool RazorPathGame::purchase_skin(int32_t skin_index) {
-    static const std::array<int32_t, 9> prices = {0, 25, 50, 600, 700, 700, 900, 1000, 950};
+    static const std::array<int32_t, 9> prices = {0, 800, 750, 600, 700, 700, 900, 1000, 950};
     if (skin_index <= 0 || skin_index >= static_cast<int32_t>(owned_skins.size()) || owned_skins[skin_index]) {
         return false;
     }
@@ -473,6 +483,7 @@ bool RazorPathGame::load_campaign_stages() {
 RazorPathGame::StageData RazorPathGame::parse_stage(const Dictionary &record) const {
     StageData parsed;
     parsed.index = static_cast<int32_t>(record.get("index", 1));
+    parsed.group = std::clamp(static_cast<int32_t>(record.get("group", (parsed.index - 1) / 10 + 1)), 1, 25);
     parsed.name = record.get("name", ui("الطريق الأول"));
     parsed.world_width = static_cast<double>(record.get("world_width", 3600.0));
     parsed.world_height = 720.0;
@@ -800,13 +811,15 @@ void RazorPathGame::complete_stage() {
         coins_earned += 10;
     }
     if (stage_index < 250) {
-        unlocked_stage = std::max(unlocked_stage, stage_index + 1);
         screen = RazorScreen::STAGE_CLEAR;
     } else {
         unlocked_stage = 250;
         screen = RazorScreen::VICTORY;
     }
     check_group_chest(stage.group);
+    if (stage.group > 0 && stage.group <= static_cast<int32_t>(claimed_group_chests.size()) && claimed_group_chests[stage.group - 1]) {
+        unlocked_stage = std::max(unlocked_stage, std::min(250, (stage.group + 1) * 10));
+    }
     if (!save_progress()) {
         ui_notice = ui("تعذر حفظ تقدم الجولة على الجهاز؛ أبقِ التطبيق مفتوحًا وحاول الحفظ مجددًا.");
         toast_time = 3.0;
@@ -961,6 +974,26 @@ void RazorPathGame::_process(double delta) {
     particles.erase(std::remove_if(particles.begin(), particles.end(), [](const Particle &p) { return p.lifetime <= 0.0; }), particles.end());
     if (screen == RazorScreen::PLAYING && hud_label != nullptr) {
         update_hud();
+    }
+    const int32_t frame = current_hero_frame();
+    if (frame >= 0 && frame < static_cast<int32_t>(hero_frames.size()) && hero_frames[frame].is_valid()) {
+        if (hero_preview_widget != nullptr) {
+            hero_preview_widget->set_texture(hero_frames[frame]);
+            hero_preview_widget->set_modulate(hero_tint());
+            const double gait_phase = std::fmod(animation_time * Math_TAU * 1.25, Math_TAU);
+            const double bounce = (1.0 - std::cos(gait_phase * 2.0)) * 2.0;
+            Vector2 preview_position = hero_preview_rect.position;
+            if (screen == RazorScreen::LEVEL_SELECT) {
+                preview_position.x += std::fmod(animation_time * 35.0, 188.0);
+            }
+            hero_preview_widget->set_position(preview_position - Vector2(0.0, bounce));
+            hero_preview_widget->set_rotation(std::sin(gait_phase) * 0.018);
+        }
+        for (TextureRect *preview : skin_preview_widgets) {
+            if (preview != nullptr) {
+                preview->set_texture(hero_frames[frame]);
+            }
+        }
     }
     queue_redraw();
 }
@@ -1245,33 +1278,69 @@ Rect2 RazorPathGame::player_body_rect() const {
 }
 
 int32_t RazorPathGame::current_hero_frame() const {
-    // Keep movement/attack pose changes on a 30 Hz tick, independent of display refresh.
     const int64_t animation_tick = static_cast<int64_t>(std::floor(animation_time * kHeroAnimationFps));
+    const int64_t pose_tick = animation_tick / 3;
+    // The supplied 4x2 sheet has two alternating run poses, then landing/jump,
+    // two attack poses, idle, and a final profile run pose.
+    static constexpr std::array<int32_t, 2> run_cycle = {0, 1};
+    const bool menu_preview = screen == RazorScreen::HOME || screen == RazorScreen::LEVEL_SELECT || screen == RazorScreen::SHOP;
+    if (menu_preview) {
+        return run_cycle[static_cast<size_t>(pose_tick % static_cast<int64_t>(run_cycle.size()))];
+    }
     if (screen == RazorScreen::VICTORY || screen == RazorScreen::STAGE_CLEAR) {
-        return 7;
-    }
-    if (attack_time > 0.0) {
-        return (animation_tick % 2 == 0) ? 3 : 7;
-    }
-    if (!on_ground) {
-        return player_vy < -70.0 ? 4 : 5;
-    }
-    if (landing_time > 0.0) {
         return 6;
     }
-    const Input *input = Input::get_singleton();
-    const bool moving = input->is_key_pressed(Key::KEY_A) || input->is_key_pressed(Key::KEY_D) ||
-        input->is_key_pressed(Key::KEY_LEFT) || input->is_key_pressed(Key::KEY_RIGHT) || !touch_actions.empty();
-    if (moving) {
-        return (animation_tick % 2 == 0) ? 1 : 2;
+    if (attack_time > 0.0) {
+        return (pose_tick % 2 == 0) ? 4 : 5;
     }
-    return 0;
+    if (!on_ground) {
+        return player_vy < -70.0 ? 3 : 2;
+    }
+    if (landing_time > 0.0) {
+        return 2;
+    }
+    if (horizontal_input_active()) {
+        return run_cycle[static_cast<size_t>(pose_tick % static_cast<int64_t>(run_cycle.size()))];
+    }
+    return 6;
+}
+
+bool RazorPathGame::horizontal_input_active() const {
+    const Input *input = Input::get_singleton();
+    if (input != nullptr && (input->is_key_pressed(Key::KEY_A) || input->is_key_pressed(Key::KEY_D) ||
+        input->is_key_pressed(Key::KEY_LEFT) || input->is_key_pressed(Key::KEY_RIGHT))) {
+        return true;
+    }
+    for (const auto &entry : touch_actions) {
+        if (entry.second == TouchAction::LEFT || entry.second == TouchAction::RIGHT) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int32_t RazorPathGame::test_animation_frame_at(double animation_seconds) {
+    const double old_time = animation_time;
+    const RazorScreen old_screen = screen;
+    animation_time = std::max(0.0, animation_seconds);
+    screen = RazorScreen::SHOP;
+    const int32_t frame = current_hero_frame();
+    animation_time = old_time;
+    screen = old_screen;
+    return frame;
 }
 
 void RazorPathGame::_draw() {
     const Vector2 size = logical_size();
-    draw_rect(Rect2(Vector2(), size), background_color(), true);
+    const bool illustrated_menu = screen == RazorScreen::HOME || screen == RazorScreen::LEVEL_SELECT || screen == RazorScreen::SHOP;
+    if (illustrated_menu && menu_background.is_valid()) {
+        draw_texture_rect(menu_background, Rect2(Vector2(), size), false);
+        draw_rect(Rect2(Vector2(), size), Color(0.30, 0.19, 0.12, 0.14), true);
+    } else {
+        draw_rect(Rect2(Vector2(), size), background_color(), true);
+    }
 
+    if (!illustrated_menu) {
     // Layered warm/monochrome silhouettes echo the supplied world references.
     const bool showing_world = screen == RazorScreen::PLAYING || screen == RazorScreen::PAUSED ||
         screen == RazorScreen::STAGE_CLEAR || screen == RazorScreen::VICTORY || screen == RazorScreen::GAME_OVER;
@@ -1445,9 +1514,14 @@ void RazorPathGame::_draw() {
 
     if (screen == RazorScreen::PLAYING || screen == RazorScreen::PAUSED || screen == RazorScreen::STAGE_CLEAR || screen == RazorScreen::VICTORY || screen == RazorScreen::GAME_OVER) {
         const int32_t frame = current_hero_frame();
-        const double sprite_width = 66.0 * scale_x;
-        const double sprite_height = 132.0 * world_scale_y;
-        const Vector2 sprite_pos((player_x - camera) * scale_x - sprite_width * 0.5, (player_feet - camera_vertical) * scale_y - sprite_height);
+        const double gait_phase = std::fmod(animation_time * Math_TAU * 1.25, Math_TAU);
+        const bool running = screen == RazorScreen::PLAYING && horizontal_input_active();
+        const double stride = running ? std::sin(gait_phase) : 0.0;
+        const double bounce = running ? (1.0 - std::cos(gait_phase * 2.0)) * 2.2 * scale_y : 0.0;
+        const double sprite_width = 66.0 * scale_x * (1.0 + 0.025 * stride);
+        const double sprite_height = 132.0 * world_scale_y * (1.0 - 0.018 * stride);
+        const Vector2 sprite_pos((player_x - camera) * scale_x - sprite_width * 0.5,
+            (player_feet - camera_vertical) * scale_y - sprite_height - bounce);
         if (hero_frames[frame].is_valid()) {
             draw_texture_rect(hero_frames[frame], Rect2(sprite_pos, Vector2(sprite_width, sprite_height)), false, hero_tint());
         } else {
@@ -1476,51 +1550,23 @@ void RazorPathGame::_draw() {
         draw_line(Vector2(size.x * 0.82, cy + 12.0), Vector2(size.x * 0.82, cy - 12.0), control_line, 5.0 * scale_x);
         draw_line(Vector2(size.x * 0.93 - 10.0, cy + 10.0), Vector2(size.x * 0.93 + 10.0, cy - 10.0), control_line, 5.0 * scale_x);
     }
+    }
 
-    if (screen == RazorScreen::PAUSED || screen == RazorScreen::SHOP || screen == RazorScreen::SETTINGS || screen == RazorScreen::LEVEL_SELECT || screen == RazorScreen::STATISTICS || screen == RazorScreen::GIFTS || screen == RazorScreen::ACHIEVEMENTS || screen == RazorScreen::STAGE_CLEAR || screen == RazorScreen::VICTORY || screen == RazorScreen::GAME_OVER) {
+    if (screen == RazorScreen::PAUSED || screen == RazorScreen::SETTINGS || screen == RazorScreen::STATISTICS || screen == RazorScreen::GIFTS || screen == RazorScreen::ACHIEVEMENTS || screen == RazorScreen::STAGE_CLEAR || screen == RazorScreen::VICTORY || screen == RazorScreen::GAME_OVER) {
         draw_rect(Rect2(Vector2(), size), Color(0.02, 0.02, 0.02, 0.54), true);
     }
     if (show_purchase_confirm || pending_equip >= 0 || show_exit_confirm) {
         draw_rect(Rect2(Vector2(size.x * 0.20, size.y * 0.56), Vector2(size.x * 0.60, size.y * 0.32)), Color(0.08, 0.07, 0.05, 0.96), true);
         draw_rect(Rect2(Vector2(size.x * 0.20, size.y * 0.56), Vector2(size.x * 0.60, size.y * 0.32)), rgba8(0xe0bc68), false, 3.0);
     }
-    if (screen == RazorScreen::LEVEL_SELECT) {
-        const auto found = authored_stages.find(std::clamp(selected_level, 1, 250));
-        const Rect2 panel(Vector2(size.x * 0.19, size.y * 0.705), Vector2(size.x * 0.62, size.y * 0.078));
-        draw_rect(panel, Color(0.96, 0.92, 0.81, 0.96), true);
-        draw_rect(panel, rgba8(0x766f5f), false, 2.0);
-        if (found != authored_stages.end()) {
-            const StageData &preview = found->second;
-            const double sx_preview = (panel.size.x - 24.0) / std::max(1.0, preview.world_width);
-            const double map_bottom = panel.position.y + panel.size.y - 7.0;
-            for (const RazorPlatformData &data : preview.platforms) {
-                const Rect2 platform_rect = current_platform_rect(data, 0.0);
-                const double lift = (preview.world_height - platform_rect.position.y) / 64.0 * 2.4;
-                const double x = panel.position.x + 12.0 + platform_rect.position.x * sx_preview;
-                const double y = map_bottom - lift;
-                const double width = std::max(2.0, platform_rect.size.x * sx_preview);
-                draw_rect(Rect2(Vector2(x, y), Vector2(width, 3.0)), platform_color(), true);
-            }
-            for (const Rect2 &hazard : preview.hazards) {
-                const double x = panel.position.x + 12.0 + hazard.position.x * sx_preview;
-                const double y = map_bottom - (preview.world_height - hazard.position.y) / 64.0 * 2.4;
-                draw_rect(Rect2(Vector2(x, y), Vector2(std::max(2.0, hazard.size.x * sx_preview), 5.0)), rgba8(0xb5493e), true);
-            }
-            const double start_x = panel.position.x + 12.0 + preview.spawn.x * sx_preview;
-            const double exit_x = panel.position.x + 12.0 + preview.exit.x * sx_preview;
-            draw_circle(Vector2(start_x, map_bottom - (preview.world_height - preview.spawn.y) / 64.0 * 2.4), 4.0, rgba8(0x427b58));
-            draw_line(Vector2(exit_x, panel.position.y + 5.0), Vector2(exit_x, map_bottom), rgba8(0xc28a39), 2.0);
-        }
-    }
-    if (screen == RazorScreen::HOME && hero_frames[0].is_valid()) {
-        const double scale = size.x / 1280.0;
-        draw_texture_rect(hero_frames[0], Rect2(Vector2(size.x * 0.475, size.y * 0.24), Vector2(64.0 * scale, 108.0 * scale)), false, hero_tint());
-    }
 }
 
 void RazorPathGame::clear_ui() {
     hud_label = nullptr;
     toast_label = nullptr;
+    hero_preview_widget = nullptr;
+    skin_preview_widgets.fill(nullptr);
+    hero_preview_rect = Rect2();
     if (ui_root == nullptr) {
         return;
     }
@@ -1529,6 +1575,41 @@ void RazorPathGame::clear_ui() {
         ui_root->remove_child(child);
         child->queue_free();
     }
+}
+
+void RazorPathGame::add_panel(const Rect2 &rect, const Color &fill, const Color &border, int32_t radius, int32_t border_width) {
+    if (ui_root == nullptr) {
+        return;
+    }
+    Panel *panel = memnew(Panel);
+    panel->set_position(rect.position);
+    panel->set_size(rect.size);
+    panel->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+    Ref<StyleBoxFlat> style;
+    style.instantiate();
+    style->set_bg_color(fill);
+    style->set_border_width_all(border_width);
+    style->set_border_color(border);
+    style->set_corner_radius_all(radius);
+    style->set_content_margin_all(8.0);
+    panel->add_theme_stylebox_override("panel", style);
+    ui_root->add_child(panel);
+}
+
+TextureRect *RazorPathGame::add_texture_rect(const Ref<Texture2D> &texture, const Rect2 &rect, const Color &tint) {
+    if (ui_root == nullptr || texture.is_null()) {
+        return nullptr;
+    }
+    TextureRect *image = memnew(TextureRect);
+    image->set_position(rect.position);
+    image->set_size(rect.size);
+    image->set_texture(texture);
+    image->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
+    image->set_stretch_mode(TextureRect::STRETCH_KEEP_ASPECT_CENTERED);
+    image->set_modulate(tint);
+    image->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+    ui_root->add_child(image);
+    return image;
 }
 
 void RazorPathGame::add_label(const String &text, const Rect2 &rect, int32_t font_size, bool bold, bool rtl) {
@@ -1541,7 +1622,7 @@ void RazorPathGame::add_label(const String &text, const Rect2 &rect, int32_t fon
     label->set_size(rect.size);
     label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
     label->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
-    label->set_layout_direction(rtl ? Control::LAYOUT_DIRECTION_RTL : Control::LAYOUT_DIRECTION_LTR);
+    label->set_layout_direction(Control::LAYOUT_DIRECTION_LTR);
     label->set_text_direction(rtl ? Control::TEXT_DIRECTION_RTL : Control::TEXT_DIRECTION_AUTO);
     label->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
     if (bold && arabic_bold_font.is_valid()) {
@@ -1560,32 +1641,52 @@ Button *RazorPathGame::add_button(const String &text, const Rect2 &rect, const S
     button->set_position(rect.position);
     button->set_size(rect.size);
     button->set_disabled(disabled);
-    button->set_layout_direction(Control::LAYOUT_DIRECTION_RTL);
+    button->set_layout_direction(Control::LAYOUT_DIRECTION_LTR);
     button->set_text_direction(Control::TEXT_DIRECTION_AUTO);
     button->set_focus_mode(Control::FOCUS_NONE);
-    button->add_theme_font_size_override("font_size", large_text ? 28 : 24);
+    const bool illustrated_menu = screen == RazorScreen::HOME || screen == RazorScreen::LEVEL_SELECT || screen == RazorScreen::SHOP;
+    button->add_theme_font_size_override("font_size", large_text ? 25 : (illustrated_menu ? 19 : 24));
     const bool locked_level = action.begins_with("stage:") && static_cast<int32_t>(action.substr(6).to_int()) > unlocked_stage;
-    const Color fill = (disabled || locked_level) ? rgba8(0x777777) : rgba8(0x171717);
+    const bool selected_level_button = action.begins_with("stage:") && static_cast<int32_t>(action.substr(6).to_int()) == selected_level;
+    const bool selected_tab = action.begins_with("tab:") && static_cast<int32_t>(action.substr(4).to_int()) == shop_tab;
+    Color fill = (disabled || locked_level) ? rgba8(0x777777) : rgba8(0x171717);
+    Color border_color = stage.monochrome ? rgba8(0x111111) : rgba8(0x766f5f);
+    Color text_color = rgba8(0xfaf8f1);
+    if (illustrated_menu) {
+        fill = rgba8(0x38261d);
+        border_color = rgba8(0x9c6d39);
+        text_color = rgba8(0xfff4dd);
+        if (locked_level) {
+            fill = rgba8(0x746a60);
+            border_color = rgba8(0x9a8a78);
+            text_color = rgba8(0xd8cfc2);
+        } else if (selected_level_button || selected_tab || (disabled && action.begins_with("skin:"))) {
+            fill = rgba8(0xb9782f);
+            border_color = rgba8(0xffd36a);
+            text_color = rgba8(0x291a10);
+        }
+    }
     Ref<StyleBoxFlat> normal;
     normal.instantiate();
     normal->set_bg_color(fill);
-    normal->set_border_width_all(2);
-    normal->set_border_color(stage.monochrome ? rgba8(0x111111) : rgba8(0x766f5f));
-    normal->set_corner_radius_all(12);
-    normal->set_content_margin_all(10.0);
+    normal->set_border_width_all(illustrated_menu ? 3 : 2);
+    normal->set_border_color(border_color);
+    normal->set_corner_radius_all(illustrated_menu ? 16 : 12);
+    normal->set_content_margin_all(illustrated_menu ? 7.0 : 10.0);
     button->add_theme_stylebox_override("normal", normal);
+    button->add_theme_stylebox_override("disabled", normal);
     Ref<StyleBoxFlat> hover;
     hover.instantiate();
-    hover->set_bg_color(disabled ? fill : (stage.monochrome ? rgba8(0x3a3a3a) : rgba8(0x474236)));
-    hover->set_border_width_all(2);
-    hover->set_border_color(stage.monochrome ? rgba8(0xffffff) : rgba8(0xe2bd69));
-    hover->set_corner_radius_all(12);
-    hover->set_content_margin_all(10.0);
+    hover->set_bg_color(disabled ? fill : (illustrated_menu ? rgba8(0x68462a) : (stage.monochrome ? rgba8(0x3a3a3a) : rgba8(0x474236))));
+    hover->set_border_width_all(illustrated_menu ? 3 : 2);
+    hover->set_border_color(illustrated_menu ? rgba8(0xffdc83) : (stage.monochrome ? rgba8(0xffffff) : rgba8(0xe2bd69)));
+    hover->set_corner_radius_all(illustrated_menu ? 16 : 12);
+    hover->set_content_margin_all(illustrated_menu ? 7.0 : 10.0);
     button->add_theme_stylebox_override("hover", hover);
     button->add_theme_stylebox_override("pressed", hover);
-    button->add_theme_color_override("font_color", rgba8(0xfaf8f1));
+    button->add_theme_color_override("font_color", text_color);
     button->add_theme_color_override("font_hover_color", rgba8(0xffffff));
-    button->add_theme_color_override("font_disabled_color", rgba8(0xc9c9c9));
+    button->add_theme_color_override("font_disabled_color", text_color);
     button->connect("pressed", Callable(this, "_on_ui_action").bind(action));
     ui_root->add_child(button);
     return button;
@@ -1629,32 +1730,91 @@ void RazorPathGame::rebuild_ui() {
     } else if (screen == RazorScreen::LEVEL_SELECT) {
         const int32_t first_level = selection_page * 20 + 1;
         const int32_t selected_group = std::clamp((selected_level + 9) / 10, 1, 25);
-        add_label(ui("اختر طريقك — ") + String::num_int64(completed_stages()) + ui(" / 250 مكتملة، النجوم ") + String::num_int64(total_stars()), rect(230, 32, 820, 70), 34, true);
-        add_button(ui("رجوع"), rect(38, 35, 150, 58), "back");
+        const int32_t group_start = (selected_group - 1) * 10 + 1;
+        int32_t group_completed = 0;
+        for (int32_t level = group_start; level < group_start + 10; ++level) {
+            const auto progress = level_progress.find(level);
+            group_completed += progress != level_progress.end() && progress->second.completed ? 1 : 0;
+        }
+        const bool chest_claimed = claimed_group_chests[selected_group - 1];
+
+        add_panel(rect(74, 140, 1132, 500), rgba8(0xf0dfc2, 0.97), rgba8(0x2b1b14), 24, 6);
+        add_panel(rect(102, 180, 302, 372), Color(0.56, 0.39, 0.26, 0.22), rgba8(0x81562f), 18, 3);
+        add_panel(rect(420, 180, 758, 372), rgba8(0xf8ead5, 0.26), rgba8(0x805b3e), 18, 3);
+        add_panel(rect(112, 232, 282, 148), rgba8(0xf0d4a8, 0.88), rgba8(0x9d774b), 12, 1);
+        const auto map_found = authored_stages.find(selected_level);
+        const StageData map_preview = map_found != authored_stages.end() ? map_found->second : make_generated_stage(selected_level);
+        const double map_x = 120.0;
+        const double map_y = 240.0;
+        const double map_width = 266.0;
+        const double map_height = 132.0;
+        const double map_sx = map_width / std::max(1.0, map_preview.world_width);
+        const double map_sy = map_height / std::max(1.0, map_preview.world_height);
+        const double map_bottom = map_y + map_height;
+        for (const RazorPlatformData &data : map_preview.platforms) {
+            const Rect2 platform_rect = current_platform_rect(data, 0.0);
+            const double x = map_x + platform_rect.position.x * map_sx;
+            const double y = map_bottom - (map_preview.world_height - platform_rect.position.y) * map_sy;
+            add_panel(rect(x, y, std::max(3.0, platform_rect.size.x * map_sx), std::max(4.0, platform_rect.size.y * map_sy)), rgba8(0x211812), rgba8(0x211812), 0, 0);
+        }
+        for (const Rect2 &hazard : map_preview.hazards) {
+            const double x = map_x + hazard.position.x * map_sx;
+            const double y = map_bottom - (map_preview.world_height - hazard.position.y) * map_sy;
+            add_panel(rect(x, y, std::max(3.0, hazard.size.x * map_sx), 5.0), rgba8(0xc55a42), rgba8(0xc55a42), 0, 0);
+        }
+        const double start_x = map_x + map_preview.spawn.x * map_sx;
+        const double start_y = map_bottom - (map_preview.world_height - map_preview.spawn.y) * map_sy;
+        const double exit_x = map_x + map_preview.exit.x * map_sx;
+        add_panel(rect(start_x - 4.0, start_y - 4.0, 8.0, 8.0), rgba8(0xffd36a), rgba8(0x7d481b), 4, 1);
+        add_panel(rect(exit_x, map_y + 2.0, 3.0, map_height - 4.0), rgba8(0xf0b245), rgba8(0xf0b245), 0, 0);
+        add_panel(rect(418, 72, 468, 58), rgba8(0x35231a), rgba8(0xd7a652), 20, 3);
+        add_button(ui("‹ عودة"), rect(28, 17, 158, 56), "back");
+        add_button(ui("اختيار المستوى"), rect(422, 76, 460, 49), "noop", true);
+        add_button(ui("RAZOR\nPATH"), rect(1038, 14, 208, 86), "noop", true);
+        add_button(ui("★ ") + String::num_int64(total_stars()) + ui(" / 750"), rect(418, 135, 205, 42), "noop", true);
+        add_button(ui("إجمالي المستويات: ٢٥٠"), rect(629, 135, 265, 42), "noop", true);
+        add_button(ui("المستوى ") + String::num_int64(selected_level), rect(119, 187, 268, 43), "noop", true);
+        if (!hero_frames.empty() && hero_frames[0].is_valid()) {
+            hero_preview_rect = rect(147, 332, 34, 62);
+            hero_preview_widget = add_texture_rect(hero_frames[0], hero_preview_rect, hero_tint());
+        }
+        add_label(ui("أهداف المستوى"), rect(122, 398, 262, 38), 20, true);
+        add_label(ui("اجمع النجوم الثلاثة"), rect(122, 434, 262, 35), 18, false);
+        add_label(ui("نقطة حفظ ومخرج آمن"), rect(122, 463, 262, 32), 16, false);
+        if (chest_claimed) {
+            add_button(ui("تم الاستلام"), rect(120, 500, 268, 42), "noop", true);
+        } else {
+            add_button(ui("صندوق المجموعة ") + String::num_int64(selected_group), rect(120, 500, 176, 42), "noop", true);
+            add_button(String::num_int64(group_completed) + ui(" / 10"), rect(300, 500, 88, 42), "noop", true);
+        }
+
         for (int32_t offset = 0; offset < 20 && first_level + offset <= 250; ++offset) {
             const int32_t i = first_level + offset;
             const int32_t col = offset % 5;
             const int32_t row = offset / 5;
-            const double x = 34.0 + col * 246.0;
-            const double y = 128.0 + row * 79.0;
+            const double x = 434.0 + col * 137.0;
+            const double y = 188.0 + row * 90.0;
             const bool locked = i > unlocked_stage;
             const auto progress = level_progress.find(i);
-            int32_t stars = 0;
-            if (progress != level_progress.end()) {
-                for (int32_t bit = 0; bit < 3; ++bit) {
-                    stars += (progress->second.star_mask & static_cast<uint8_t>(1u << bit)) != 0 ? 1 : 0;
-                }
+            uint8_t star_mask = 0;
+            if (progress != level_progress.end() && progress->second.completed) {
+                star_mask = progress->second.star_mask;
             }
-            String caption = String::num_int64(i) + (locked ? ui(" · مقفلة") : (progress != level_progress.end() && progress->second.completed ? ui(" · ★ ") + String::num_int64(stars) + ui("/3") : ui(" · مفتوحة")));
-            add_button(caption, rect(x, y, 228, 66), "stage:" + String::num_int64(i));
+            String stars_line;
+            for (int32_t bit = 0; bit < 3; ++bit) {
+                stars_line += ((star_mask & static_cast<uint8_t>(1u << bit)) != 0) ? ui("★ ") : ui("☆ ");
+            }
+            const String caption = String::num_int64(i) + (locked ? ui("\n🔒") : ui("\n") + stars_line);
+            Button *level_button = add_button(caption, rect(x, y, 126, 78), "stage:" + String::num_int64(i));
+            if (level_button != nullptr) {
+                level_button->add_theme_font_size_override("font_size", large_text ? 22 : 18);
+            }
         }
-        const bool chest_claimed = claimed_group_chests[selected_group - 1];
-        const auto preview_level = authored_stages.find(selected_level);
-        const String preview_name = preview_level == authored_stages.end() ? String() : preview_level->second.name;
-        add_label(ui("صندوق المجموعة ") + String::num_int64(selected_group) + (chest_claimed ? ui(" — تم الاستلام") : ui(" — يُفتح بعد إكمال مستوياتها العشرة")) + ui(" · المعاينة: ") + preview_name, rect(245, 462, 790, 42), 19, true);
-        add_button(ui("الصفحة السابقة"), rect(245, 570, 220, 58), "page_prev", selection_page == 0);
-        add_label(String::num_int64(selection_page + 1) + ui(" / 13"), rect(505, 570, 270, 58), 23, true);
-        add_button(ui("الصفحة التالية"), rect(815, 570, 220, 58), "page_next", selection_page >= 12);
+        add_button(ui("‹"), rect(12, 326, 54, 78), "page_prev", selection_page == 0);
+        add_button(ui("›"), rect(1214, 326, 54, 78), "page_next", selection_page >= 12);
+        add_button(ui("أكمل 10 مستويات لفتح الصندوق التالي"), rect(430, 570, 515, 48), "noop", true);
+        add_button(String::num_int64(group_completed) + ui(" / 10"), rect(951, 570, 177, 48), "noop", true);
+        add_label(ui("الصفحة ") + String::num_int64(selection_page + 1) + ui(" من 13"), rect(558, 624, 170, 28), 15, true);
     } else if (screen == RazorScreen::PLAYING) {
         hud_label = memnew(Label);
         hud_label->set_position(Vector2(250.0 * sx, 16.0 * sy));
@@ -1687,66 +1847,122 @@ void RazorPathGame::rebuild_ui() {
         add_button(ui("العودة للقائمة"), rect(440, 467, 400, 62), "home");
     } else if (screen == RazorScreen::SHOP) {
         static const std::array<String, 9> skin_names = {ui("الأساسي"), ui("الذهبي"), ui("الحجري"), ui("الداكن"), ui("الناري"), ui("الجليدي"), ui("الشبحي"), ui("السماوي"), ui("المظلم")};
-        static const std::array<int32_t, 9> skin_prices = {0, 25, 50, 600, 700, 700, 900, 1000, 950};
+        static const std::array<int32_t, 9> skin_prices = {0, 800, 750, 600, 700, 700, 900, 1000, 950};
         static const std::array<String, 4> effect_names = {ui("بلا أثر"), ui("أثر ذهبي"), ui("أثر سماوي"), ui("أثر شبحي")};
         static const std::array<int32_t, 4> effect_prices = {0, 200, 250, 300};
-        add_label(ui("متجر Razor Path"), rect(390, 48, 500, 68), 40, true);
-        add_label(ui("رصيد العملات: ") + String::num_int64(coins), rect(430, 112, 420, 40), 24);
-        add_button(ui("رجوع"), rect(38, 35, 150, 58), "back");
+        static const std::array<int32_t, 8> display_order = {1, 3, 4, 5, 6, 2, 7, 8};
+        static const std::array<Color, 9> skin_tints = {
+            rgba8(0xffffff), rgba8(0xffd35b), rgba8(0xb7aa96), rgba8(0x27212a), rgba8(0xff593c),
+            rgba8(0x8bdcff), rgba8(0xe3e4ed), rgba8(0x88c5ff), rgba8(0x241b24)};
+        const int64_t now = utc_now();
+        const bool gift_ready = daily_last_claim == 0 || (now > daily_last_claim && now - daily_last_claim >= 86400);
+        const int64_t gift_remaining = gift_ready ? 0 : std::max<int64_t>(0, 86400 - (now - daily_last_claim));
+        const String gift_timer = gift_ready ? ui("متاحة الآن") : ui("متبقي ") + String::num_int64(gift_remaining / 3600) + ui(" س ") + String::num_int64((gift_remaining % 3600) / 60) + ui(" د");
+
+        add_panel(rect(28, 150, 1224, 475), rgba8(0xf1dfc4, 0.97), rgba8(0x2c1b13), 24, 6);
+        add_panel(rect(47, 169, 220, 438), rgba8(0xe8d4b6, 0.92), rgba8(0x765038), 18, 3);
+        add_panel(rect(278, 169, 664, 438), rgba8(0xf8ebd8, 0.45), rgba8(0x896543), 18, 3);
+        add_panel(rect(956, 169, 278, 210), rgba8(0xf2dfbd, 0.94), rgba8(0x805530), 18, 3);
+        add_panel(rect(956, 391, 278, 216), rgba8(0xe8d0aa, 0.94), rgba8(0x805530), 18, 3);
+        add_button(ui("‹ عودة"), rect(30, 17, 155, 56), "back");
+        add_button(ui("★ ") + String::num_int64(coins) + ui("   +"), rect(199, 17, 203, 56), "tab:3");
+        add_button(ui("المتجر"), rect(508, 17, 352, 63), "noop", true);
+        add_button(ui("RAZOR\nPATH"), rect(1053, 11, 194, 82), "noop", true);
         const std::array<String, 4> tab_names = {ui("المظاهر"), ui("المؤثرات"), ui("العناصر"), ui("عروض خاصة")};
         for (int32_t tab = 0; tab < 4; ++tab) {
-            add_button(tab_names[tab], rect(170.0 + tab * 240.0, 160, 220, 52), "tab:" + String::num_int64(tab), shop_tab == tab);
+            add_button(tab_names[tab], rect(284.0 + tab * 176.0, 96, 168, 49), "tab:" + String::num_int64(tab), shop_tab == tab);
         }
+        add_button(ui("معاينة الشخصية"), rect(59, 180, 196, 39), "noop", true);
+        if (!hero_frames.empty() && hero_frames[0].is_valid()) {
+            hero_preview_rect = rect(70, 220, 173, 241);
+            hero_preview_widget = add_texture_rect(hero_frames[0], hero_preview_rect, hero_tint());
+        }
+        add_label(ui("المظهر الحالي"), rect(62, 470, 190, 30), 17, false);
+        add_label(skin_names[std::clamp(selected_skin, 0, 8)], rect(62, 499, 190, 38), 23, true);
+        add_button(ui("تغيير المظهر"), rect(63, 550, 187, 44), "appearance");
         if (shop_tab == 0) {
-            for (int32_t skin = 0; skin < static_cast<int32_t>(skin_names.size()); ++skin) {
-                const int32_t col = skin % 4;
-                const int32_t row = skin / 4;
+            for (int32_t slot = 0; slot < static_cast<int32_t>(display_order.size()); ++slot) {
+                const int32_t skin = display_order[slot];
+                const int32_t col = slot % 4;
+                const int32_t row = slot / 4;
+                const Rect2 card = rect(288.0 + col * 163.0, 176.0 + row * 209.0, 153.0, 198.0);
+                add_panel(card, rgba8(0xf1dfc4, 0.98), rgba8(0x60432d), 17, 3);
+                add_button(skin_names[skin], rect(card.position.x + 6.0, card.position.y + 5.0, card.size.x - 12.0, 31.0), "noop", true);
+                if (hero_frames[0].is_valid()) {
+                    skin_preview_widgets[slot] = add_texture_rect(hero_frames[0], rect(card.position.x + 23.0, card.position.y + 37.0, card.size.x - 46.0, 85.0), skin_tints[skin]);
+                }
                 const bool owned = owned_skins[skin];
-                String caption = skin_names[skin] + String("\n");
                 String action;
+                String caption;
                 if (selected_skin == skin) {
-                    caption += ui("مجهز ✓");
+                    caption = ui("مجهز ✓");
                     action = "skin:" + String::num_int64(skin);
                 } else if (owned) {
-                    caption += ui("تجهيز");
+                    caption = ui("تجهيز");
                     action = "skin:" + String::num_int64(skin);
                 } else {
-                    caption += ui("شراء · ") + String::num_int64(skin_prices[skin]);
+                    add_label(ui("★ ") + String::num_int64(skin_prices[skin]), rect(card.position.x + 10.0, card.position.y + 122.0, card.size.x - 20.0, 26.0), 18, true, false);
+                    caption = ui("شراء");
                     action = "buy_skin:" + String::num_int64(skin);
                 }
-                add_button(caption, rect(82.0 + col * 286.0, 226.0 + row * 112.0, 260, 98), action, selected_skin == skin);
+                if (owned) {
+                    add_label(ui("مظهر مملوك"), rect(card.position.x + 10.0, card.position.y + 122.0, card.size.x - 20.0, 26.0), 16, false);
+                }
+                add_button(caption, rect(card.position.x + 10.0, card.position.y + 157.0, card.size.x - 20.0, 35.0), action, selected_skin == skin);
+                if (skin == 1) {
+                    add_button(ui("مميز"), rect(card.position.x + 8.0, card.position.y + 39.0, 63.0, 25.0), "noop", true);
+                }
             }
         } else if (shop_tab == 1) {
             for (int32_t effect = 0; effect < static_cast<int32_t>(effect_names.size()); ++effect) {
+                const int32_t col = effect % 2;
+                const int32_t row = effect / 2;
+                const Rect2 card = rect(318.0 + col * 306.0, 190.0 + row * 193.0, 286.0, 174.0);
+                add_panel(card, rgba8(0xf1dfc4, 0.98), rgba8(0x60432d), 17, 3);
+                add_label(effect_names[effect], rect(card.position.x + 12.0, card.position.y + 14.0, card.size.x - 24.0, 34.0), 20, true);
                 const bool owned = owned_effects[effect];
-                String caption = effect_names[effect] + String("\n");
                 String action;
+                String caption;
                 if (selected_effect == effect) {
-                    caption += ui("مجهز ✓");
+                    caption = ui("مجهز ✓");
                     action = "effect:" + String::num_int64(effect);
                 } else if (owned) {
-                    caption += ui("تجهيز");
+                    caption = ui("تجهيز");
                     action = "effect:" + String::num_int64(effect);
                 } else {
-                    caption += ui("شراء · ") + String::num_int64(effect_prices[effect]);
+                    add_label(ui("★ ") + String::num_int64(effect_prices[effect]), rect(card.position.x + 14.0, card.position.y + 77.0, card.size.x - 28.0, 28.0), 18, true);
+                    caption = ui("شراء");
                     action = "buy_effect:" + String::num_int64(effect);
                 }
-                add_button(caption, rect(120.0 + effect * 265.0, 290, 235, 110), action, selected_effect == effect);
+                add_button(caption, rect(card.position.x + 18.0, card.position.y + 121.0, card.size.x - 36.0, 40.0), action, selected_effect == effect);
             }
-            add_label(ui("آثار الركض والقفز تجميلية فقط ولا تغيّر سرعة اللاعب أو القفز."), rect(260, 440, 760, 60), 22);
+            add_label(ui("آثار الركض والقفز تجميلية فقط ولا تغيّر سرعة اللاعب أو القفز."), rect(312, 573, 620, 30), 16, false);
         } else if (shop_tab == 2) {
-            add_label(ui("لا توجد عناصر استهلاكية تغيّر الفيزياء أو تمنح حصانة؛ توازن المراحل محفوظ."), rect(210, 275, 860, 96), 27, true);
-            add_label(ui("قد تُضاف عناصر شكلية مستقبلًا بعد ربطها بنظام حفظ موثوق."), rect(250, 385, 780, 62), 21);
+            add_panel(rect(316, 205, 585, 300), rgba8(0xf1dfc4, 0.98), rgba8(0x60432d), 20, 3);
+            add_label(ui("العناصر"), rect(340, 235, 536, 48), 28, true);
+            add_label(ui("لا توجد عناصر استهلاكية تمنح حصانة أو تغيّر الفيزياء."), rect(340, 304, 536, 70), 21, false);
+            add_label(ui("نحافظ على توازن المراحل؛ ستظهر العناصر الشكلية هنا عند إضافتها."), rect(340, 390, 536, 82), 18, false);
         } else {
-            add_button(ui("حزمة 500 عملة — الشراء غير متاح"), rect(250, 250, 780, 66), "noop", true);
-            add_button(ui("حزمة 1200 عملة — الشراء غير متاح"), rect(250, 330, 780, 66), "noop", true);
-            add_button(ui("إزالة الإعلانات — غير متاحة"), rect(250, 410, 780, 66), "noop", true);
-            add_button(ui("إعلان مكافأة +200"), rect(250, 490, 780, 66), "rewarded_ad");
-            add_label(ui("لا يوجد مزود إعلانات أو دفع مهيأ؛ لن تُمنح عملات من دون إتمام إعلان فعلي."), rect(200, 560, 880, 44), 18);
+            add_panel(rect(316, 195, 610, 345), rgba8(0xf1dfc4, 0.98), rgba8(0x60432d), 20, 3);
+            add_label(ui("العروض الخاصة"), rect(342, 214, 558, 48), 27, true);
+            add_button(ui("حزمة 500 عملة · الشراء غير متاح"), rect(346, 275, 548, 50), "noop", true);
+            add_button(ui("حزمة 1200 عملة · الشراء غير متاح"), rect(346, 337, 548, 50), "noop", true);
+            add_button(ui("إزالة الإعلانات · غير متاحة"), rect(346, 399, 548, 50), "noop", true);
+            add_label(ui("لا يوجد مزود دفع مهيأ؛ لا تُخصم أموال من داخل اللعبة."), rect(342, 466, 558, 48), 16, false);
         }
-        const int64_t now = utc_now();
-        const bool gift_ready = daily_last_claim == 0 || (now > daily_last_claim && now - daily_last_claim >= 86400);
-        add_button(gift_ready ? ui("استلام الهدية اليومية +100") : ui("الهدية اليومية · عُد بعد 24 ساعة"), rect(440, 600, 400, 52), "daily_claim", !gift_ready);
+        add_label(ui("الهدية اليومية"), rect(969, 178, 252, 34), 21, true);
+        add_label(gift_ready ? ui("هدية مجانية كل يوم") : gift_timer, rect(969, 214, 252, 30), 17, false);
+        add_label(ui("★ 100 عملة"), rect(969, 247, 252, 32), 21, true);
+        add_button(gift_ready ? ui("استلام الهدية") : ui("العودة لاحقًا"), rect(971, 290, 246, 42), "daily_claim", !gift_ready);
+        add_label(gift_timer, rect(969, 337, 252, 26), 15, false);
+        add_label(ui("مكافأة العودة"), rect(969, 400, 252, 35), 20, true);
+        add_label(ui("اكسب 200 عملة بعد مشاهدة إعلان فعلي."), rect(969, 440, 252, 56), 16, false);
+        add_button(ui("▶ مشاهدة إعلان"), rect(971, 501, 246, 42), "rewarded_ad");
+        add_label(ui("+ 200 عملة"), rect(969, 551, 252, 30), 17, true);
+        add_button(ui("الإنجازات"), rect(52, 638, 210, 59), "achievements");
+        add_button(ui("الإحصائيات"), rect(278, 638, 210, 59), "statistics");
+        add_button(ui("الهدايا"), rect(504, 638, 180, 59), "gifts");
+        add_button(ui("العروض الخاصة"), rect(1010, 638, 220, 59), "tab:3", shop_tab == 3);
     } else if (screen == RazorScreen::SETTINGS) {
         add_label(ui("الإعدادات"), rect(390, 76, 500, 75), 42, true);
         add_button(ui("رجوع"), rect(38, 35, 150, 58), "back");
@@ -1812,7 +2028,7 @@ void RazorPathGame::rebuild_ui() {
 
     if (show_purchase_confirm && pending_purchase >= 0) {
         static const std::array<String, 9> skin_names = {ui("الأساسي"), ui("الذهبي"), ui("الحجري"), ui("الداكن"), ui("الناري"), ui("الجليدي"), ui("الشبحي"), ui("السماوي"), ui("المظلم")};
-        static const std::array<int32_t, 9> skin_prices = {0, 25, 50, 600, 700, 700, 900, 1000, 950};
+        static const std::array<int32_t, 9> skin_prices = {0, 800, 750, 600, 700, 700, 900, 1000, 950};
         static const std::array<String, 4> effect_names = {ui("بلا أثر"), ui("أثر ذهبي"), ui("أثر سماوي"), ui("أثر شبحي")};
         static const std::array<int32_t, 4> effect_prices = {0, 200, 250, 300};
         const bool is_effect = pending_purchase >= 100;
@@ -1854,6 +2070,9 @@ void RazorPathGame::set_screen(RazorScreen next_screen) {
         save_progress();
     }
     screen = next_screen;
+    if (screen == RazorScreen::LEVEL_SELECT) {
+        selected_level_confirmed = false;
+    }
     touch_actions.clear();
     jump_requested = false;
     attack_requested = false;
@@ -1934,21 +2153,30 @@ void RazorPathGame::handle_action(const String &action) {
     } else if (action == "page_prev") {
         selection_page = std::max(0, selection_page - 1);
         selected_level = selection_page * 20 + 1;
+        selected_level_confirmed = false;
         rebuild_ui();
     } else if (action == "page_next") {
         selection_page = std::min(12, selection_page + 1);
         selected_level = selection_page * 20 + 1;
+        selected_level_confirmed = false;
         rebuild_ui();
     } else if (action.begins_with("tab:")) {
         shop_tab = std::clamp(static_cast<int32_t>(action.substr(4).to_int()), 0, 3);
         rebuild_ui();
     } else if (action.begins_with("stage:")) {
         const int32_t chosen = static_cast<int32_t>(action.substr(6).to_int());
+        const int32_t previously_selected = selected_level;
         selected_level = std::clamp(chosen, 1, 250);
         if (chosen <= unlocked_stage) {
-            start_stage(chosen);
+            if (previously_selected == chosen && selected_level_confirmed) {
+                start_stage(chosen);
+            } else {
+                selected_level_confirmed = true;
+                rebuild_ui();
+            }
         } else {
-            ui_notice = ui("أكمل الجولة ") + String::num_int64(unlocked_stage) + ui(" أولًا لفتح هذه الجولة.");
+            selected_level_confirmed = false;
+            ui_notice = ui("أكمل جميع مستويات المجموعة السابقة لفتح هذه الجولة.");
             toast_time = 2.5;
             rebuild_ui();
         }
@@ -1966,7 +2194,7 @@ void RazorPathGame::handle_action(const String &action) {
         }
     } else if (action.begins_with("buy_skin:")) {
         const int32_t chosen = static_cast<int32_t>(action.substr(9).to_int());
-        static const std::array<int32_t, 9> prices = {0, 25, 50, 600, 700, 700, 900, 1000, 950};
+        static const std::array<int32_t, 9> prices = {0, 800, 750, 600, 700, 700, 900, 1000, 950};
         if (chosen > 0 && chosen < static_cast<int32_t>(owned_skins.size()) && !owned_skins[chosen]) {
             if (coins < prices[chosen]) {
                 shop_tab = 3;
