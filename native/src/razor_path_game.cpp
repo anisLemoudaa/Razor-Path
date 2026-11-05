@@ -240,23 +240,29 @@ RazorPathGame::StageData RazorPathGame::make_generated_stage(int32_t requested_i
     StageData generated;
     generated.index = requested_index;
     generated.name = ui("مسار الظلال ") + String::num_int64(requested_index);
-    generated.world_width = 3200.0 + requested_index * 120.0;
-    generated.required_coins = requested_index >= 2 ? 2.0 + (requested_index % 4) : 0.0;
+    generated.world_width = 3600.0 + requested_index * 180.0;
+    generated.required_coins = std::clamp(static_cast<double>(requested_index), 1.0, 8.0);
     generated.spawn = Vector2(120.0, 590.0);
     generated.exit = Vector2(generated.world_width - 130.0, 590.0);
-    generated.monochrome = false;
-    generated.platforms.emplace_back(Vector2(0.0, 620.0), Vector2(720.0, 100.0));
-    for (int32_t i = 0; i < 6; ++i) {
-        const double x = 560.0 + i * (generated.world_width - 900.0) / 6.0;
-        const double y = 510.0 - ((i + requested_index) % 3) * 58.0;
-        const double width = 260.0 + ((i + requested_index) % 2) * 55.0;
-        generated.platforms.emplace_back(Vector2(x, y), Vector2(width, 30.0));
-        generated.coins.emplace_back(Vector2(x + width * 0.5, y - 52.0));
-        if ((i + requested_index) % 3 == 1) {
-            generated.hazards.emplace_back(Vector2(x + width * 0.55, y - 36.0), Vector2(48.0, 36.0));
+    generated.monochrome = (requested_index % 5 == 0);
+    generated.platforms.emplace_back(Vector2(0.0, 620.0), Vector2(650.0, 100.0));
+
+    const int32_t segments = 5 + (requested_index % 3);
+    for (int32_t i = 0; i < segments; ++i) {
+        const double start_x = 700.0 + i * ((generated.world_width - 1200.0) / segments);
+        const double y = 520.0 - ((i + requested_index) % 4) * 78.0;
+        const double width = 220.0 + (i % 2) * 90.0;
+        generated.platforms.emplace_back(Vector2(start_x, y), Vector2(width, 28.0));
+        generated.coins.emplace_back(Vector2(start_x + width * 0.45, y - 52.0));
+        if ((i + requested_index) % 3 == 0) {
+            generated.hazards.emplace_back(Vector2(start_x + width * 0.60, y - 38.0), Vector2(42.0, 34.0));
         }
     }
-    generated.platforms.emplace_back(Vector2(generated.world_width - 430.0, 620.0), Vector2(430.0, 100.0));
+
+    const double final_x = generated.world_width - 420.0;
+    generated.platforms.emplace_back(Vector2(final_x, 620.0), Vector2(420.0, 100.0));
+    generated.coins.emplace_back(Vector2(final_x + 200.0, 525.0));
+    generated.coins.emplace_back(Vector2(final_x + 120.0, 510.0));
     return generated;
 }
 
@@ -278,6 +284,8 @@ bool RazorPathGame::load_stage(int32_t requested_index) {
     jump_requested = false;
     attack_requested = false;
     landing_time = 0.0;
+    coyote_time = 0.0;
+    jump_buffer_time = 0.0;
     std::fill(std::begin(stage_coin_collected), std::end(stage_coin_collected), false);
     return true;
 }
@@ -424,6 +432,7 @@ void RazorPathGame::_input(const Ref<InputEvent> &event) {
         if (screen == RazorScreen::PLAYING) {
             if (code == Key::KEY_SPACE || code == Key::KEY_UP || code == Key::KEY_W) {
                 jump_requested = true;
+                jump_buffer_time = 0.16;
             }
             if (code == Key::KEY_J || code == Key::KEY_X) {
                 attack_requested = true;
@@ -440,6 +449,8 @@ void RazorPathGame::_process(double delta) {
     attack_cooldown = std::max(0.0, attack_cooldown - delta);
     landing_time = std::max(0.0, landing_time - delta);
     toast_time = std::max(0.0, toast_time - delta);
+    jump_buffer_time = std::max(0.0, jump_buffer_time - delta);
+    coyote_time = on_ground ? 0.12 : std::max(0.0, coyote_time - delta);
     if (toast_time <= 0.0 && toast_label != nullptr) {
         toast_label->set_text(String());
     }
@@ -475,23 +486,30 @@ void RazorPathGame::_physics_process(double delta) {
     }
 
     const double axis = (right ? 1.0 : 0.0) - (left ? 1.0 : 0.0);
-    player_x = std::clamp(player_x + axis * 360.0 * delta, 18.0, stage.world_width - 18.0);
-    if (jump_requested && on_ground) {
-        player_vy = -700.0;
+    const double move_speed = 420.0;
+    player_x = std::clamp(player_x + axis * move_speed * delta, 18.0, stage.world_width - 18.0);
+
+    if (jump_requested || jump_buffer_time > 0.0) {
+        jump_buffer_time = std::max(jump_buffer_time, 0.16);
+    }
+    if (jump_buffer_time > 0.0 && (on_ground || coyote_time > 0.0)) {
+        player_vy = -780.0;
         on_ground = false;
+        coyote_time = 0.0;
+        jump_buffer_time = 0.0;
         total_jumps += 1;
         spawn_particles(Vector2(player_x, player_feet - 4.0), stage.monochrome ? rgba8(0x111111) : rgba8(0x685e49), 8, 95.0);
     }
     if (attack && attack_cooldown <= 0.0) {
         attack_time = 0.28;
-        attack_cooldown = 0.45;
+        attack_cooldown = 0.36;
         const double dir = axis < 0.0 ? -1.0 : 1.0;
         const Rect2 strike(Vector2(player_x + dir * 18.0 - 24.0, player_feet - 112.0), Vector2(68.0, 82.0));
         for (Rect2 &hazard : stage.hazards) {
             if (strike.intersects(hazard)) {
                 const Vector2 hazard_center = hazard.position + hazard.size * 0.5;
                 hazard.position.x = -100000.0;
-                spawn_particles(hazard_center, stage.monochrome ? rgba8(0x222222) : rgba8(0xe7b84b), 10, 130.0);
+                spawn_particles(hazard_center, stage.monochrome ? rgba8(0x222222) : rgba8(0xe7b84b), 12, 130.0);
             }
         }
     }
@@ -499,7 +517,7 @@ void RazorPathGame::_physics_process(double delta) {
     attack_requested = false;
 
     const double old_feet = player_feet;
-    player_vy += 1850.0 * delta;
+    player_vy += 1950.0 * delta;
     player_feet += player_vy * delta;
     on_ground = false;
     for (const Rect2 &platform : stage.platforms) {
@@ -509,10 +527,11 @@ void RazorPathGame::_physics_process(double delta) {
             player_feet = platform.position.y;
             player_vy = 0.0;
             on_ground = true;
+            coyote_time = 0.12;
         }
     }
     if (on_ground && old_feet > player_feet + 2.0) {
-        landing_time = 0.14;
+        landing_time = 0.12;
         spawn_particles(Vector2(player_x, player_feet - 2.0), stage.monochrome ? rgba8(0x444444) : rgba8(0x625c4f), 5, 55.0);
     }
 
@@ -628,7 +647,6 @@ void RazorPathGame::_draw() {
     const Vector2 size = logical_size();
     draw_rect(Rect2(Vector2(), size), background_color(), true);
 
-    // Layered warm/monochrome silhouettes echo the supplied world references.
     const bool showing_world = screen == RazorScreen::PLAYING || screen == RazorScreen::PAUSED ||
         screen == RazorScreen::STAGE_CLEAR || screen == RazorScreen::VICTORY || screen == RazorScreen::GAME_OVER;
     const double parallax = showing_world ? camera_x : 0.0;
@@ -686,7 +704,6 @@ void RazorPathGame::_draw() {
         }
     }
 
-    // Foreground landmarks: small ladders, sparse grass and a blocky exit gate.
     for (int32_t ladder = 0; ladder < 4; ++ladder) {
         const double lx = (520.0 + ladder * 950.0 - camera) * scale_x;
         const double ly = size.y * 0.60;
@@ -760,7 +777,6 @@ void RazorPathGame::_draw() {
             draw_circle(Vector2(x, cy), 42.0 * scale_x, control_fill);
             draw_arc(Vector2(x, cy), 42.0 * scale_x, 0.0, Math_TAU, 32, control_line, 2.0 * scale_x);
         }
-        // Direction arrows and action glyphs are geometric, avoiding font-direction ambiguity.
         draw_line(Vector2(size.x * 0.075 - 12.0, cy), Vector2(size.x * 0.075 + 10.0, cy), control_line, 5.0 * scale_x);
         draw_line(Vector2(size.x * 0.20 + 12.0, cy), Vector2(size.x * 0.20 - 10.0, cy), control_line, 5.0 * scale_x);
         draw_line(Vector2(size.x * 0.82, cy + 12.0), Vector2(size.x * 0.82, cy - 12.0), control_line, 5.0 * scale_x);
@@ -846,7 +862,7 @@ Button *RazorPathGame::add_button(const String &text, const Rect2 &rect, const S
 
 void RazorPathGame::update_hud() {
     if (hud_label != nullptr) {
-        String text = ui("المرحلة ") + String::num_int64(stage_index) + ui("، العملات ") + String::num_int64(stage_coins) + ui(" من ") + String::num_int64(static_cast<int64_t>(stage.required_coins)) + ui("، الوقت ");
+        String text = ui("المرحلة ") + String::num_int64(stage_index) + ui("، العملات ") + String::num_int64(stage_coins) + ui(" من ") + String::num_int64(static_cast<int64_t>(std::ceil(stage.required_coins))) + ui("، الوقت ");
         text += String::num_int64(static_cast<int64_t>(std::ceil(remaining_time))) + ui(" ثانية");
         hud_label->set_text(text);
     }
@@ -1119,3 +1135,475 @@ void RazorPathGame::test_back() {
 }
 
 } // namespace godot
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+n
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
