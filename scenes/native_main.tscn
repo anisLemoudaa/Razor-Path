@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="GDExtension" path="res://native/razor_path.gdextension" id="1_extension"]
 [ext_resource type="Texture2D" path="res://assets/characters/razor_hero_01.png" id="2_frame_01"]
@@ -10,7 +10,11 @@
 [ext_resource type="Texture2D" path="res://assets/characters/razor_hero_07.png" id="8_frame_07"]
 [ext_resource type="Texture2D" path="res://assets/characters/razor_hero_08.png" id="9_frame_08"]
 [ext_resource type="Theme" path="res://assets/razor_path_theme.tres" id="10_theme"]
+[ext_resource type="Script" path="res://scripts/ui_polish.gd" id="11_ui_polish"]
 
 [node name="RazorPath" type="RazorPathGame"]
 hero_frame_assets = Array[Texture2D]([ExtResource("2_frame_01"), ExtResource("3_frame_02"), ExtResource("4_frame_03"), ExtResource("5_frame_04"), ExtResource("6_frame_05"), ExtResource("7_frame_06"), ExtResource("8_frame_07"), ExtResource("9_frame_08")])
 interface_theme = ExtResource("10_theme")
+
+[node name="UiPolish" type="Node" parent="."]
+script = ExtResource("11_ui_polish")
